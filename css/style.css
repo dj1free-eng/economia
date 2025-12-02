@@ -873,8 +873,8 @@ main {
 }
 
 
-/* Swipe / slide animation */
 
+/* Swipe / slide animation entre pestañas */
 .tabs-wrapper {
   position: relative;
   overflow: hidden;
