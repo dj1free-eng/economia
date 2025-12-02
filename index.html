@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Economía Familiar · v1.1c</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="toast" id="toast"></div>
+
+  <!-- Modal edición genérica -->
+  <div class="modal-overlay" id="editModal">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title" id="modalTitle">Editar</div>
+        <button class="modal-close" id="modalClose">✕</button>
+      </div>
+      <div id="modalContent"></div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="modalCancel">Cancelar</button>
+        <button class="btn btn-primary" id="modalSave">Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal confirmación borrado -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">Confirmar eliminación</div>
+        <button class="modal-close" id="confirmClose">✕</button>
+      </div>
+      <div id="confirmMessage">¿Seguro que quieres eliminar este elemento?</div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="confirmCancel">Cancelar</button>
+        <button class="btn btn-danger" id="confirmOk">Eliminar</button>
+      </div>
+    </div>
+  </div>
+
+  <header>
+    <div class="header-inner">
+      <div class="title-row">
+        <div class="title-main">
+          <div class="title-icon">💰</div>
+          <div class="title-text">
+            <strong>Economía Familiar · v1.1c</strong>
+            <span>Control total de gastos e ingresos</span>
+          </div>
+        </div>
+        <div class="month-nav-container">
+          <button class="month-nav-btn" id="btnPrevMonth">◀</button>
+          <div class="month-display" id="monthDisplay">Enero 2024</div>
+          <button class="month-nav-btn" id="btnNextMonth">▶</button>
+          <div class="month-picker-dropdown" id="monthPickerDropdown">
+            <div class="month-picker-header">
+              <button class="year-nav-btn" id="yearPrev">◀</button>
+              <div class="month-picker-year" id="pickerYear">2024</div>
+              <button class="year-nav-btn" id="yearNext">▶</button>
+            </div>
+            <div class="months-grid" id="monthsGrid"></div>
+          </div>
+        </div>
+      </div>
+      <div class="chips-row">
+        <div class="chip in">
+          <span>💵 Entradas</span>
+          <strong id="chipIngresos">0 €</strong>
+        </div>
+        <div class="chip out">
+          <span>💸 Gastos</span>
+          <strong id="chipGastos">0 €</strong>
+        </div>
+        <div class="chip balance-pos" id="chipBalanceWrap">
+          <span>📊 Balance</span>
+          <strong id="chipBalance">0 €</strong>
+          <small id="chipHuchasTotal" class="chip-subline">Huchas: 0 €</small>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="app">
+    <main class="tabs-container">
+      <!-- INGRESOS -->
+      <section class="tab-section active" data-tab="ingresos">
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">💰 Ingresos base mensuales</div>
+              <div class="card-subtitle">
+                Define los ingresos fijos que entran cada mes en tu hogar.
+              </div>
+            </div>
+            <div class="card-tag">Ingresos</div>
+          </div>
+          <div class="grid-2">
+            <div>
+              <div class="field-group">
+                <label>Juan (€ / mes)</label>
+                <input type="number" id="ingJuan" step="0.01" inputmode="decimal" min="0" placeholder="0.00" />
+              </div>
+              <div class="field-group">
+                <label>Saray (€ / mes)</label>
+                <input type="number" id="ingSaray" step="0.01" inputmode="decimal" min="0" placeholder="0.00" />
+              </div>
+            </div>
+            <div>
+              <div class="field-group">
+                <label>Otros ingresos fijos (€ / mes)</label>
+                <input type="number" id="ingOtros" step="0.01" inputmode="decimal" min="0" placeholder="0.00" />
+              </div>
+              <button class="btn btn-primary" id="btnSaveIngresos">💾 Guardar ingresos base</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">💶 Ingresos puntuales</div>
+              <div class="card-subtitle">
+                Registra ingresos extra (horas extra, ventas, devoluciones...).
+              </div>
+            </div>
+            <div class="card-tag">Extra</div>
+          </div>
+          <div class="grid-2">
+            <div>
+              <div class="field-group">
+                <label>📅 Fecha</label>
+                <input type="date" id="ingresoPuntualFecha" />
+              </div>
+              <div class="field-group">
+                <label>📝 Descripción</label>
+                <input type="text" id="ingresoPuntualDesc" placeholder="Horas extra, devolución, venta..." />
+              </div>
+            </div>
+            <div>
+              <div class="field-group">
+                <label>💰 Importe (€)</label>
+                <input type="number" id="ingresoPuntualImporte" step="0.01" inputmode="decimal" min="0.01" placeholder="0.00" />
+              </div>
+              <button class="btn btn-success" id="btnAddIngresoPuntual">➕ Añadir ingreso puntual</button>
+            </div>
+          </div>
+
+          <div id="ingresosPuntualesLista" class="expense-list"></div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📊 Resumen del mes</div>
+              <div class="card-subtitle">
+                Visión general de tu situación financiera este mes.
+              </div>
+            </div>
+            <div class="card-tag">Resumen</div>
+          </div>
+          <div class="grid-2">
+            <div>
+              <div class="field-group">
+                <label>💵 Ingresos totales</label>
+                <div id="resIngMes" class="small-text" style="font-size: 1.1rem; font-weight: 600; color: #10b981;">0 €</div>
+              </div>
+              <div class="field-group">
+                <label>🏠 Gastos fijos</label>
+                <div id="resFijosMes" class="small-text" style="font-size: 1.1rem; font-weight: 600; color: #ef4444;">0 €</div>
+              </div>
+            </div>
+            <div>
+              <div class="field-group">
+                <label>🛒 Gastos variables</label>
+                <div id="resVarMes" class="small-text" style="font-size: 1.1rem; font-weight: 600; color: #f59e0b;">0 €</div>
+              </div>
+              <div class="field-group">
+                <label>💎 Balance final</label>
+                <div id="resBalMes" class="small-text" style="font-size: 1.1rem; font-weight: 600; color: #3b82f6;">0 €</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <!-- GASTOS FIJOS -->
+      <section class="tab-section" data-tab="fijos">
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🏠 Añadir gasto fijo</div>
+              <div class="card-subtitle">
+                Gastos recurrentes mensuales: alquiler, luz, internet, seguros, etc.
+              </div>
+            </div>
+            <div class="card-tag">Fijos</div>
+          </div>
+          <div class="grid-2">
+            <div>
+              <div class="field-group">
+                <label>Nombre del gasto</label>
+                <input type="text" id="fijoNombre" placeholder="Ej: Alquiler, Luz, Internet..." />
+              </div>
+            </div>
+            <div>
+              <div class="field-group">
+                <label>Importe mensual (€)</label>
+                <input type="number" id="fijoImporte" step="0.01" inputmode="decimal" min="0" placeholder="0.00" />
+              </div>
+              <button class="btn btn-success" id="btnAddFijo">➕ Añadir gasto fijo</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📋 Listado de gastos fijos</div>
+              <div class="card-subtitle">
+                Total mensual: <strong id="totalFijosDisplay" style="color: #ef4444;">0 €</strong>
+              </div>
+            </div>
+            <div class="card-tag">Listado</div>
+          </div>
+          <div id="fijosTableContainer"></div>
+        </section>
+      </section>
+
+      <!-- GASTOS -->
+      <section class="tab-section" data-tab="gastos">
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🛒 Registrar gasto</div>
+              <div class="card-subtitle">
+                Apunta cada compra del día para llevar un control exacto.
+              </div>
+            </div>
+            <div class="card-tag">Gastos</div>
+          </div>
+          <div class="grid-2">
+            <div>
+              <div class="field-group">
+                <label>📅 Fecha</label>
+                <input type="date" id="gastoFecha" />
+              </div>
+              <div class="field-group">
+                <label>🏷️ Categoría</label>
+                <input list="catSugerencias" id="gastoCategoria" placeholder="Alimentación, Ocio, Huchas..." />
+                <datalist id="catSugerencias"></datalist>
+              </div>
+            </div>
+            <div>
+              <div class="field-group">
+                <label>📝 Descripción</label>
+                <input type="text" id="gastoDesc" placeholder="Lidl, gasolina, cine..." />
+              </div>
+              <div class="field-group">
+                <label>💰 Importe (€)</label>
+                <input type="number" id="gastoImporte" step="0.01" inputmode="decimal" min="0.01" placeholder="0.00" />
+              </div>
+              <button class="btn btn-primary" id="btnAddGasto">➕ Guardar gasto</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📊 Gastos del mes</div>
+              <div class="card-subtitle">
+                Todos los gastos registrados en el mes seleccionado.
+              </div>
+            </div>
+            <div class="card-tag">Listado</div>
+          </div>
+          <div id="gastosLista" class="expense-list"></div>
+        </section>
+      </section>
+
+      <!-- SOBRES -->
+      <section class="tab-section" data-tab="sobres">
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📩 Crear presupuesto</div>
+              <div class="card-subtitle">
+                Define cuánto quieres gastar en cada categoría mensualmente.
+              </div>
+            </div>
+            <div class="card-tag">Sobres</div>
+          </div>
+          <div class="grid-2">
+            <div>
+              <div class="field-group">
+                <label>Nombre del sobre</label>
+                <input type="text" id="sobreNombre" placeholder="Alimentación, Ocio, Transporte..." />
+              </div>
+            </div>
+            <div>
+              <div class="field-group">
+                <label>Presupuesto mensual (€)</label>
+                <input type="number" id="sobreImporte" step="0.01" inputmode="decimal" min="0" placeholder="0.00" />
+              </div>
+              <button class="btn btn-success" id="btnAddSobre">💾 Crear presupuesto</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📊 Estado de presupuestos</div>
+              <div class="card-subtitle">
+                Cuánto has gastado vs cuánto tenías presupuestado.
+              </div>
+            </div>
+            <div class="card-tag">Estado</div>
+          </div>
+          <div id="sobresLista" class="pill-list"></div>
+        </section>
+      </section>
+
+      <!-- HUCHAS -->
+      <section class="tab-section" data-tab="huchas">
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🐷 Crear hucha de ahorro</div>
+              <div class="card-subtitle">
+                Guarda dinero para objetivos específicos: viajes, compras grandes, emergencias...
+              </div>
+            </div>
+            <div class="card-tag">Huchas</div>
+          </div>
+          <div class="grid-2">
+            <div>
+              <div class="field-group">
+                <label>Nombre de la hucha</label>
+                <input type="text" id="huchaNombre" placeholder="Black Friday, Viaje, PS5..." />
+              </div>
+              <div class="field-group">
+                <label>Objetivo (€) - opcional</label>
+                <input type="number" id="huchaObjetivo" step="0.01" inputmode="decimal" min="0" placeholder="0.00" />
+              </div>
+            </div>
+            <div>
+              <div class="field-group">
+                <label>Saldo inicial (€) - opcional</label>
+                <input type="number" id="huchaSaldoInicial" step="0.01" inputmode="decimal" min="0" placeholder="0.00" />
+              </div>
+              <button class="btn btn-success" id="btnAddHucha">➕ Crear hucha</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">💰 Movimientos en huchas</div>
+              <div class="card-subtitle">
+                Aportar crea un gasto en "Huchas". Retirar solo reduce el saldo guardado.
+              </div>
+            </div>
+            <div class="card-tag">Movimientos</div>
+          </div>
+          <div class="grid-2">
+            <div>
+              <div class="field-group">
+                <label>Seleccionar hucha</label>
+                <select id="huchaSelect">
+                  <option value="">-- Elige una hucha --</option>
+                </select>
+              </div>
+              <div class="field-group">
+                <label>Importe (€)</label>
+                <input type="number" id="huchaImporte" step="0.01" inputmode="decimal" min="0.01" placeholder="0.00" />
+              </div>
+            </div>
+            <div>
+              <div class="field-group">
+                <label>Acción</label>
+                <select id="huchaAccion">
+                  <option value="aportar">💵 Aportar (ahorrar dinero)</option>
+                  <option value="retirar">💸 Retirar (usar ahorros)</option>
+                </select>
+              </div>
+              <button class="btn btn-primary" id="btnHuchaMovimiento">💰 Registrar movimiento</button>
+            </div>
+          </div>
+          <div class="small-text" style="margin-top:0.75rem; padding: 0.75rem; background: #f0f9ff; border-radius: 8px; border-left: 3px solid #3b82f6;">
+            <strong>💡 Cómo funciona:</strong><br />
+            · <strong>Aportar:</strong> Suma al saldo de la hucha y registra un gasto en la categoría "Huchas".<br />
+            · <strong>Retirar:</strong> Resta del saldo de la hucha, sin crear ningún gasto adicional.
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📋 Mis huchas</div>
+              <div class="card-subtitle">
+                Saldo actual, objetivos y progreso de cada hucha.
+              </div>
+            </div>
+            <div class="card-tag">Listado</div>
+          </div>
+          <div id="huchasLista" class="pill-list"></div>
+        </section>
+      </section>
+
+      <!-- CONFIG -->
+      <section class="tab-section" data-tab="config">
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📤 Exportar datos</div>
+              <div class="card-subtitle">
+                Descarga una copia de seguridad de todos tus datos en formato JSON.
+              </div>
+            </div>
+            <div class="card-tag">Backup</div>
+          </div>
+          <button class="btn btn-primary" id="btnExportJson">📥 Descargar copia de seguridad</button>
+          <div class="small-text" style="margin-top:0.75rem;">
+            Guarda este archivo en un lugar seguro (iCloud, Google Drive, email...) para poder recuperar tus datos si cambias de dispositivo.
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📥 Importar datos</div>
+              <div class="card-subtitle">
+                Restaura una copia de seguridad anterior.
+              </div>
+            </div>
+            <div class="card-tag">Restaurar</div>
+          </div>
+          <div class="grid-2">
+            <div>
+              <div class="field-group">
+                <label>Desde archivo JSON</label>
+                <input type="file" id="importFile" accept="application/json,.json" />
+              </div>
+              <button class="btn btn-outline" id="btnImportJsonFile">📤 Importar desde archivo</button>
+            </div>
+            <div>
+              <div class="field-group">
+                <label>O pegar JSON aquí</label>
+                <textarea id="importJsonText" class="notes-box" placeholder="Pega el contenido del JSON..."></textarea>
+              </div>
+              <button class="btn btn-primary" id="btnImportJsonText">📤 Importar desde texto</button>
+            </div>
+          </div>
+          <div class="warn-box">
+            ⚠️ <strong>Atención:</strong> Al importar se sobrescribirán todos los datos actuales (ingresos, gastos fijos, sobres, huchas, gastos y notas).
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📄 Importar desde CSV bancario</div>
+              <div class="card-subtitle">
+                Importa movimientos desde el CSV de CaixaBank (Concepto;Fecha;Importe;Saldo).
+              </div>
+            </div>
+            <div class="card-tag">CSV</div>
+          </div>
+          <div class="grid-2">
+            <div>
+              <div class="field-group">
+                <label>Archivo CSV</label>
+                <input type="file" id="csvFile" accept=".csv,text/csv" />
+              </div>
+            </div>
+            <div>
+              <button class="btn btn-primary" id="btnImportCsv">📤 Importar movimientos</button>
+              <div class="small-text" style="margin-top:0.5rem;">
+                Solo se importan cargos (importes negativos). Cada cargo se añade como gasto en la categoría "Banco".
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📝 Notas del mes</div>
+              <div class="card-subtitle">
+                Añade comentarios o recordatorios sobre el mes actual.
+              </div>
+            </div>
+            <div class="card-tag">Notas</div>
+          </div>
+          <div class="field-group">
+            <textarea id="notasMes" class="notes-box" placeholder="Ej: Este mes hubo gastos extra por..."></textarea>
+          </div>
+          <button class="btn btn-primary" id="btnSaveNotas">💾 Guardar notas</button>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🗑️ Borrar todos los datos</div>
+              <div class="card-subtitle">
+                Resetea la aplicación al estado inicial. Esta acción no se puede deshacer.
+              </div>
+            </div>
+            <div class="card-tag">Peligro</div>
+          </div>
+          <button class="btn btn-danger" id="btnResetAll">🧨 Borrar todo y empezar de cero</button>
+          <div class="small-text" style="margin-top:0.75rem; color: #dc2626;">
+            ⚠️ Esta acción eliminará permanentemente todos los datos guardados en este dispositivo.
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <nav class="bottom-nav">
+    <div class="bottom-nav-inner">
+      <button class="tab-btn active" data-tab-target="ingresos">
+        <div class="tab-btn-icon">💵</div>
+        <span class="label">Ingresos</span>
+      </button>
+      <button class="tab-btn" data-tab-target="fijos">
+        <div class="tab-btn-icon">🏠</div>
+        <span class="label">Fijos</span>
+      </button>
+      <button class="tab-btn" data-tab-target="gastos">
+        <div class="tab-btn-icon">🛒</div>
+        <span class="label">Gastos</span>
+      </button>
+      <button class="tab-btn" data-tab-target="sobres">
+        <div class="tab-btn-icon">📩</div>
+        <span class="label">Sobres</span>
+      </button>
+      <button class="tab-btn" data-tab-target="huchas">
+        <div class="tab-btn-icon">🐷</div>
+        <span class="label">Huchas</span>
+      </button>
+      <button class="tab-btn" data-tab-target="config">
+        <div class="tab-btn-icon">⚙️</div>
+        <span class="label">Config</span>
+      </button>
+    </div>
+  </nav>
+
+  <script src="js/app.js"></script>
+  <script src="js/swipe.js"></script>
+</body>
+</html>
