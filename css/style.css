@@ -575,15 +575,7 @@ main {
   color: #dc2626;
 }
 
-.pill-list { 
-  display: flex; 
-  flex-direction: column; 
-  gap: 0.5rem; 
-  margin-top: 1rem; 
-  max-height: 400px; 
-  overflow-y: auto; 
-  width: 100%;
-}
+y
 .pill-item {
   display: flex; 
   justify-content: space-between; 
