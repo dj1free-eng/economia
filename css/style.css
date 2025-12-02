@@ -663,19 +663,38 @@ y
   resize: vertical; 
 }
 
-.tabs-container { 
-  margin-bottom: 1rem; 
+/* ----- Tabs y swipe entre pestañas ----- */
+
+.tabs-wrapper {
+  overflow: hidden;           /* Para que al deslizar no se vea nada “salirse” */
 }
+
+.tabs-container {
+  margin-top: 1rem;
+  transition: transform 0.28s ease-out;  /* Animación suave al hacer swipe */
+}
+
+/* Animación de desplazamiento lateral tipo carrusel */
+.tabs-container.slide-left {
+  transform: translateX(-35%);
+}
+
+.tabs-container.slide-right {
+  transform: translateX(35%);
+}
+
 .tab-section { 
   display: none; 
 }
+
 .tab-section.active { 
   display: block;
-  animation: fadeIn 0.3s ease-in;
+  animation: fadeIn 0.25s ease-in;
 }
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 /* Animación suave de "empujón" lateral al cambiar de pestaña */
 .tabs-container {
