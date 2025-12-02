@@ -854,78 +854,130 @@
       showToast('Notas del mes guardadas.');
     });
   }
-
-  // ----- Export / Import JSON -----
-  function setupExportImportJson() {
-    const btnExport = document.getElementById('btnExportJson');
-    const fileInput = document.getElementById('importFile');
-    const btnImportFile = document.getElementById('btnImportJsonFile');
-    const textArea = document.getElementById('importJsonText');
-    const btnImportText = document.getElementById('btnImportJsonText');
-
-    if (btnExport) {
-      btnExport.addEventListener('click', () => {
-        const dataStr = JSON.stringify(state, null, 2);
-        const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const mk = getCurrentMonthKey();
-        a.href = url;
-        a.download = 'economia_familiar_' + mk + '.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        showToast('Copia de seguridad descargada.');
-      });
+// Aplica el contenido de un backup JSON a todo el estado de la app
+function applyBackupPayload(data) {
+  try {
+    if (!data || typeof data !== "object") {
+      console.warn("Backup inválido:", data);
+      showToast("❌ Formato de copia de seguridad no válido");
+      return;
     }
 
-    if (btnImportFile && fileInput) {
-      btnImportFile.addEventListener('click', () => {
-        const file = fileInput.files && fileInput.files[0];
-        if (!file) {
-          showToast('Selecciona un archivo JSON primero.');
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          try {
-            const data = JSON.parse(ev.target.result);
-            if (!data || typeof data !== 'object') throw new Error('JSON inválido');
-            state = Object.assign({ ingresosBase: { juan:0, saray:0, otros:0 }, fijos:[], sobres:[], huchas:[], ingresosPuntuales:[], gastos:[], notasPorMes:{} }, data);
-            saveState();
-            renderAll();
-            showToast('Datos importados correctamente.');
-          } catch (e) {
-            console.error(e);
-            showToast('Error al leer el JSON.');
-          }
-        };
-        reader.readAsText(file, 'utf-8');
-      });
-    }
+    // Permite tanto el formato nuevo como posibles formatos antiguos
+    baseConfig = data.baseConfig || data.ingresosBase || { juan: 0, saray: 0, otros: 0 };
+    sobres = data.sobres || {};
+    huchas = Array.isArray(data.huchas) ? data.huchas : [];
+    gastos = Array.isArray(data.gastos)
+      ? data.gastos
+      : (Array.isArray(data.movimientos) ? data.movimientos : []);
+    gastosFijos = Array.isArray(data.gastosFijos) ? data.gastosFijos : [];
+    ingresosPuntuales = Array.isArray(data.ingresosPuntuales) ? data.ingresosPuntuales : [];
+    notasByMonth = data.notasByMonth || {};
 
-    if (btnImportText && textArea) {
-      btnImportText.addEventListener('click', () => {
-        const content = textArea.value.trim();
-        if (!content) {
-          showToast('Pega el contenido JSON primero.');
-          return;
-        }
-        try {
-          const data = JSON.parse(content);
-          if (!data || typeof data !== 'object') throw new Error('JSON inválido');
-          state = Object.assign({ ingresosBase: { juan:0, saray:0, otros:0 }, fijos:[], sobres:[], huchas:[], ingresosPuntuales:[], gastos:[], notasPorMes:{} }, data);
-          saveState();
-          renderAll();
-          showToast('Datos importados correctamente.');
-        } catch (e) {
-          console.error(e);
-          showToast('Error al leer el JSON.');
-        }
-      });
-    }
+    // Guardar todo en localStorage
+    saveJSON(LS_KEYS.BASE, baseConfig);
+    saveJSON(LS_KEYS.SOBRES, sobres);
+    saveJSON(LS_KEYS.HUCHAS, huchas);
+    saveJSON(LS_KEYS.GASTOS, gastos);
+    saveJSON(LS_KEYS.FIJOS, gastosFijos);
+    saveJSON(LS_KEYS.INGRESOS_PUNTUALES, ingresosPuntuales);
+    saveJSON(LS_KEYS.NOTAS, notasByMonth);
+
+    refreshCategorySuggestions();
+    renderAll();
+
+    showToast("✅ Datos importados correctamente");
+  } catch (err) {
+    console.error("Error aplicando backup:", err);
+    showToast("❌ Error al procesar el JSON");
   }
+}
+// ─── Export / Import JSON ───
+function setupExportImportJson() {
+  const btnExportJson      = document.getElementById("btnExportJson");
+  const importFileInput    = document.getElementById("importFile");
+  const btnImportJsonFile  = document.getElementById("btnImportJsonFile");
+  const importJsonTextArea = document.getElementById("importJsonText");
+  const btnImportJsonText  = document.getElementById("btnImportJsonText");
+
+  // EXPORTAR
+  if (btnExportJson) {
+    btnExportJson.addEventListener("click", function () {
+      const payload = {
+        meta: {
+          app: "eco-familiar",
+          version: "v1.1b",
+          exportedAt: new Date().toISOString()
+        },
+        baseConfig,
+        sobres,
+        huchas,
+        gastos,
+        gastosFijos,
+        ingresosPuntuales,
+        notasByMonth
+      };
+
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: "application/json"
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const today = new Date().toISOString().slice(0, 10);
+
+      a.href = url;
+      a.download = "eco_familiar_backup_" + today + ".json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showToast("✅ Copia de seguridad descargada");
+    });
+  }
+
+  // IMPORTAR DESDE ARCHIVO
+  if (btnImportJsonFile && importFileInput) {
+    btnImportJsonFile.addEventListener("click", function () {
+      const file = importFileInput.files && importFileInput.files[0];
+      if (!file) {
+        showToast("⚠️ Selecciona un archivo JSON");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function (ev) {
+        try {
+          const data = JSON.parse(ev.target.result);
+          applyBackupPayload(data);
+        } catch (err) {
+          console.error(err);
+          showToast("❌ Error al importar el JSON");
+        }
+      };
+      reader.readAsText(file, "utf-8");
+    });
+  }
+
+  // IMPORTAR PEGANDO TEXTO
+  if (btnImportJsonText && importJsonTextArea) {
+    btnImportJsonText.addEventListener("click", function () {
+      const txt = importJsonTextArea.value || "";
+      if (!txt.trim()) {
+        showToast("⚠️ Pega el contenido del JSON");
+        return;
+      }
+      try {
+        const data = JSON.parse(txt);
+        applyBackupPayload(data);
+        importJsonTextArea.value = "";
+      } catch (err) {
+        console.error(err);
+        showToast("❌ El texto no es un JSON válido");
+      }
+    });
+  }
+}
 
   // ----- Import CSV -----
   function setupImportCsv() {
