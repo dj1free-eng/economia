@@ -878,7 +878,7 @@
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        showToast('Copia de seguridad descargada.');
+        showToast('✅ Copia de seguridad descargada');
       });
     }
 
@@ -886,7 +886,7 @@
       btnImportFile.addEventListener('click', () => {
         const file = fileInput.files && fileInput.files[0];
         if (!file) {
-          showToast('Selecciona un archivo JSON primero.');
+          showToast('⚠️ Selecciona un archivo JSON');
           return;
         }
         const reader = new FileReader();
@@ -896,10 +896,10 @@
             applyBackupPayload(data);
             saveState();
             renderAll();
-            showToast('Datos importados correctamente.');
+            showToast('✅ Datos importados correctamente');
           } catch (e) {
             console.error(e);
-            showToast('Error al leer el JSON.');
+            showToast('❌ Error al leer el JSON');
           }
         };
         reader.readAsText(file, 'utf-8');
@@ -910,7 +910,7 @@
       btnImportText.addEventListener('click', () => {
         const content = textArea.value.trim();
         if (!content) {
-          showToast('Pega el contenido JSON primero.');
+          showToast('⚠️ Pega el contenido del JSON');
           return;
         }
         try {
@@ -918,10 +918,10 @@
           applyBackupPayload(data);
           saveState();
           renderAll();
-          showToast('Datos importados correctamente.');
+          showToast('✅ Datos importados correctamente');
         } catch (e) {
           console.error(e);
-          showToast('El texto no es un JSON válido.');
+          showToast('❌ El texto no es un JSON válido');
         }
       });
     }
@@ -1038,6 +1038,8 @@
 
     state = newState;
   }
+
+  // ----- Modal edición
  genérica -----
   function openEditModal(type, data) {
     const overlay = document.getElementById('editModal');

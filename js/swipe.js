@@ -30,16 +30,20 @@ function setActiveTab(newIndex, direction) {
     );
   });
 
+  // Prepara posiciones iniciales según dirección
   if (direction === 'left') {
-    // Muevo la pestaña actual hacia la izquierda y entra la nueva desde la derecha
+    currentSection.classList.add('active');
+    nextSection.classList.add('slide-in-from-right');
+    void nextSection.offsetWidth;
     currentSection.classList.add('slide-out-to-left');
-    nextSection.classList.add('active', 'slide-in-from-right');
+    nextSection.classList.add('active');
   } else if (direction === 'right') {
-    // Muevo la pestaña actual hacia la derecha y entra la nueva desde la izquierda
+    currentSection.classList.add('active');
+    nextSection.classList.add('slide-in-from-left');
+    void nextSection.offsetWidth;
     currentSection.classList.add('slide-out-to-right');
-    nextSection.classList.add('active', 'slide-in-from-left');
+    nextSection.classList.add('active');
   } else {
-    // Cambio directo sin animación de swipe (por ejemplo al tocar botón)
     nextSection.classList.add('active');
   }
 
@@ -51,11 +55,6 @@ if (tabsWrapper) {
     if (!e.touches || e.touches.length !== 1) return;
     startX = e.touches[0].clientX;
     isSwiping = true;
-  }, { passive: true });
-
-  tabsWrapper.addEventListener('touchmove', (e) => {
-    if (!isSwiping) return;
-    // Se podría usar para efecto de arrastre en tiempo real si quisiéramos
   }, { passive: true });
 
   tabsWrapper.addEventListener('touchend', (e) => {
