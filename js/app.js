@@ -856,6 +856,8 @@
   }
 
   // ----- Export / Import JSON -----
+  
+  // ----- Export / Import JSON -----
   function setupExportImportJson() {
     const btnExport = document.getElementById('btnExportJson');
     const fileInput = document.getElementById('importFile');
@@ -891,8 +893,7 @@
         reader.onload = (ev) => {
           try {
             const data = JSON.parse(ev.target.result);
-            if (!data || typeof data !== 'object') throw new Error('JSON inválido');
-            state = Object.assign({ ingresosBase: { juan:0, saray:0, otros:0 }, fijos:[], sobres:[], huchas:[], ingresosPuntuales:[], gastos:[], notasPorMes:{} }, data);
+            applyBackupPayload(data);
             saveState();
             renderAll();
             showToast('Datos importados correctamente.');
@@ -914,106 +915,130 @@
         }
         try {
           const data = JSON.parse(content);
-          if (!data || typeof data !== 'object') throw new Error('JSON inválido');
-          state = Object.assign({ ingresosBase: { juan:0, saray:0, otros:0 }, fijos:[], sobres:[], huchas:[], ingresosPuntuales:[], gastos:[], notasPorMes:{} }, data);
+          applyBackupPayload(data);
           saveState();
           renderAll();
           showToast('Datos importados correctamente.');
         } catch (e) {
           console.error(e);
-          showToast('Error al leer el JSON.');
+          showToast('El texto no es un JSON válido.');
         }
       });
     }
   }
 
-  // ----- Import CSV -----
-  function setupImportCsv() {
-    const fileInput = document.getElementById('csvFile');
-    const btn = document.getElementById('btnImportCsv');
-    if (!fileInput || !btn) return;
+  // Acepta backups antiguos y nuevos y los mapea al schema actual de "state"
+  function applyBackupPayload(data) {
+    if (!data || typeof data !== 'object') {
+      throw new Error('Backup inválido');
+    }
 
-    btn.addEventListener('click', () => {
-      const file = fileInput.files && fileInput.files[0];
-      if (!file) {
-        showToast('Selecciona un archivo CSV primero.');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const text = ev.target.result;
-        const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
-        if (!lines.length) {
-          showToast('El CSV está vacío.');
-          return;
-        }
-        let count = 0;
-        for (let i = 1; i < lines.length; i++) {
-          const line = lines[i];
-          const parts = line.split(';');
-          if (parts.length < 4) continue;
-          const concepto = parts[0].trim();
-          const fechaRaw = parts[1].trim();
-          const importeRaw = parts[2].replace('.', '').replace(',', '.').trim();
-          const importe = Number(importeRaw);
-          if (!isFinite(importe) || importe >= 0) {
-            continue; // solo cargos (negativos)
-          }
-          const absImp = Math.abs(importe);
-          const fechaParts = fechaRaw.split('/');
-          let fechaIso = '';
-          if (fechaParts.length === 3) {
-            const d = fechaParts[0].padStart(2,'0');
-            const m = fechaParts[1].padStart(2,'0');
-            const y = fechaParts[2].length === 2 ? ('20' + fechaParts[2]) : fechaParts[2];
-            fechaIso = y + '-' + m + '-' + d;
-          } else {
-            fechaIso = fechaRaw;
-          }
-          const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
-          state.gastos.push({
-            id,
-            fecha: fechaIso,
-            categoria: 'Banco',
-            desc: concepto,
-            importe: absImp
-          });
-          count++;
-        }
-        saveState();
-        renderGastosLista();
-        renderSobresLista();
-        rebuildCategoriasSugerencias();
-        updateResumenYChips();
-        showToast('Importados ' + count + ' cargos como gastos.');
+    const newState = {
+      ingresosBase: { juan: 0, saray: 0, otros: 0 },
+      fijos: [],
+      sobres: [],
+      huchas: [],
+      ingresosPuntuales: [],
+      gastos: [],
+      notasPorMes: {}
+    };
+
+    // 1) Ingresos base: formato nuevo (ingresosBase) o antiguo (baseConfig)
+    if (data.ingresosBase && typeof data.ingresosBase === 'object') {
+      newState.ingresosBase = {
+        juan: Number(data.ingresosBase.juan || 0),
+        saray: Number(data.ingresosBase.saray || 0),
+        otros: Number(data.ingresosBase.otros || 0)
       };
-      reader.readAsText(file, 'latin1');
-    });
-  }
+    } else if (data.baseConfig && typeof data.baseConfig === 'object') {
+      newState.ingresosBase = {
+        juan: Number(data.baseConfig.juan || 0),
+        saray: Number(data.baseConfig.saray || 0),
+        otros: Number(data.baseConfig.otros || 0)
+      };
+    }
 
-  // ----- Reset total -----
-  function setupReset() {
-    const btn = document.getElementById('btnResetAll');
-    if (!btn) return;
-    btn.addEventListener('click', () => {
-      openConfirm('Se borrarán todos los datos de la app en este dispositivo. ¿Seguro?', () => {
-        state = {
-          ingresosBase: { juan: 0, saray: 0, otros: 0 },
-          fijos: [],
-          sobres: [],
-          huchas: [],
-          ingresosPuntuales: [],
-          gastos: [],
-          notasPorMes: {}
-        };
-        saveState();
-        renderAll();
-        showToast('Datos eliminados. Empezamos de cero.');
-      });
-    });
-  }
+    // 2) Gastos fijos: array "fijos" o antiguo "gastosFijos"
+    if (Array.isArray(data.fijos)) {
+      newState.fijos = data.fijos.map(f => ({
+        id: String(f.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+        nombre: f.nombre || '',
+        importe: Number(f.importe || 0)
+      }));
+    } else if (Array.isArray(data.gastosFijos)) {
+      newState.fijos = data.gastosFijos.map(f => ({
+        id: String(f.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+        nombre: f.nombre || '',
+        importe: Number(f.importe || 0)
+      }));
+    }
 
-  // ----- Modal edición genérica -----
+    // 3) Sobres / presupuestos
+    if (Array.isArray(data.sobres)) {
+      // Formato nuevo: array de sobres
+      newState.sobres = data.sobres.map(s => ({
+        id: String(s.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+        nombre: s.nombre || '',
+        presupuesto: Number(s.presupuesto || s.importe || 0)
+      }));
+    } else if (data.sobres && typeof data.sobres === 'object') {
+      // Formato antiguo: objeto { nombre: importe }
+      newState.sobres = Object.keys(data.sobres).map(nombre => ({
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+        nombre,
+        presupuesto: Number(data.sobres[nombre] || 0)
+      }));
+    }
+
+    // 4) Huchas
+    if (Array.isArray(data.huchas)) {
+      newState.huchas = data.huchas.map(h => ({
+        id: String(h.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+        nombre: h.nombre || '',
+        objetivo: Number(h.objetivo || 0),
+        saldo: Number(h.saldo || 0)
+      }));
+    }
+
+    // 5) Ingresos puntuales
+    if (Array.isArray(data.ingresosPuntuales)) {
+      newState.ingresosPuntuales = data.ingresosPuntuales.map(ip => ({
+        id: String(ip.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+        fecha: ip.fecha || '',
+        desc: ip.desc || '',
+        importe: Number(ip.importe || 0)
+      }));
+    }
+
+    // 6) Gastos
+    if (Array.isArray(data.gastos)) {
+      newState.gastos = data.gastos.map(g => ({
+        id: String(g.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+        fecha: g.fecha || '',
+        categoria: g.categoria || 'Otros',
+        desc: g.desc || '',
+        importe: Number(g.importe || 0)
+      }));
+    } else if (Array.isArray(data.movimientos)) {
+      newState.gastos = data.movimientos.map(g => ({
+        id: String(g.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+        fecha: g.fecha || '',
+        categoria: g.categoria || 'Otros',
+        desc: g.desc || '',
+        importe: Number(g.importe || 0)
+      }));
+    }
+
+    // 7) Notas por mes
+    if (data.notasPorMes && typeof data.notasPorMes === 'object') {
+      newState.notasPorMes = data.notasPorMes;
+    } else if (data.notasByMonth && typeof data.notasByMonth === 'object') {
+      newState.notasPorMes = data.notasByMonth;
+    }
+
+    state = newState;
+  }
+ genérica -----
   function openEditModal(type, data) {
     const overlay = document.getElementById('editModal');
     const titleEl = document.getElementById('modalTitle');
