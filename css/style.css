@@ -685,7 +685,28 @@ main {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+/* Animación suave de "empujón" lateral al cambiar de pestaña */
+.tabs-container {
+  position: relative;
+}
 
+.tabs-container.swipe-left {
+  animation: swipeLeftNudge 0.15s ease-out;
+}
+
+.tabs-container.swipe-right {
+  animation: swipeRightNudge 0.15s ease-out;
+}
+
+@keyframes swipeLeftNudge {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-8px); }
+}
+
+@keyframes swipeRightNudge {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(8px); }
+}
 .bottom-nav {
   position: fixed; 
   bottom: 0; 
