@@ -14,117 +14,304 @@
   };
 
   const monthNames = [
-    'Enero','Febrero','Marzo','Abril','Mayo','Junio',
-    'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'
+    'Enero', 'Febrero', 'Marzo', 'Abril',
+    'Mayo', 'Junio', 'Julio', 'Agosto',
+    'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ];
 
-  let currentYear;
-  let currentMonth; // 0–11
+  let currentYear = new Date().getFullYear();
+  let currentMonth = new Date().getMonth();
 
-  // ----- Helpers básicos -----
+  // ----------------- Utilidades -----------------
   function saveState() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (e) {
-      console.error('Error guardando estado', e);
-      showToast('No se pudo guardar en este dispositivo.');
-    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }
 
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object') {
-          state = Object.assign(state, parsed);
-        }
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        state = {
+          ingresosBase: parsed.ingresosBase || { juan: 0, saray: 0, otros: 0 },
+          fijos: parsed.fijos || [],
+          sobres: parsed.sobres || [],
+          huchas: parsed.huchas || [],
+          ingresosPuntuales: parsed.ingresosPuntuales || [],
+          gastos: parsed.gastos || [],
+          notasPorMes: parsed.notasPorMes || {}
+        };
       }
     } catch (e) {
-      console.error('Error leyendo estado', e);
+      console.error('Error al cargar estado desde localStorage:', e);
     }
   }
 
-  function monthKey(year, month) {
-    return year + '-' + String(month + 1).padStart(2, '0');
-  }
-
-  function parseDateToYm(dateStr) {
-    if (!dateStr) return null;
-    const d = new Date(dateStr + 'T00:00:00');
-    if (isNaN(d)) return null;
-    return { y: d.getFullYear(), m: d.getMonth() };
-  }
-
-  function getCurrentMonthKey() {
-    return monthKey(currentYear, currentMonth);
-  }
-
-  function formatMonthKey(mk) {
-    if (!mk) return '';
-    const [y, m] = mk.split('-');
-    const idx = Number(m) - 1;
-    if (idx >= 0 && idx < 12) {
-      return monthNames[idx] + ' ' + y;
-    }
-    return mk;
-  }
-
-  function formatCurrency(value) {
-    const v = Number(value) || 0;
-    return v.toLocaleString('es-ES', {
+  function formatCurrency(num) {
+    const value = Number(num) || 0;
+    return value.toLocaleString('es-ES', {
       style: 'currency',
       currency: 'EUR',
+      minimumFractionDigits: 2,
       maximumFractionDigits: 2
     });
   }
 
-  function showToast(msg) {
-    const el = document.getElementById('toast');
-    if (!el) return;
-    el.textContent = msg;
-    el.classList.add('show');
-    setTimeout(() => el.classList.remove('show'), 2200);
+  function getCurrentMonthKey() {
+    const y = currentYear;
+    const m = String(currentMonth + 1).padStart(2, '0');
+    return `${y}-${m}`;
   }
 
-  // ----- Modal confirmación -----
-  let pendingConfirm = null;
+  function parseDateToYM(dateStr) {
+    if (!dateStr) return null;
+    const [y, m] = dateStr.split('-').map(x => parseInt(x, 10));
+    if (!y || !m) return null;
+    return { year: y, month: m - 1 };
+  }
 
-  function openConfirm(message, onOk) {
-    const overlay = document.getElementById('confirmModal');
-    const msgEl = document.getElementById('confirmMessage');
-    if (!overlay || !msgEl) return;
-    msgEl.textContent = message || '¿Seguro que quieres eliminar este elemento?';
-    pendingConfirm = typeof onOk === 'function' ? onOk : null;
-    overlay.classList.add('active');
+  function compareYM(aYear, aMonth, bYear, bMonth) {
+    if (aYear < bYear) return -1;
+    if (aYear > bYear) return 1;
+    if (aMonth < bMonth) return -1;
+    if (aMonth > bMonth) return 1;
+    return 0;
+  }
+
+  function getGastosMes(year, month) {
+    const ym = `${year}-${String(month + 1).padStart(2, '0')}`;
+    return (state.gastos || []).filter(g => (g.fecha || '').slice(0, 7) === ym);
+  }
+
+  function getIngresosPuntualesMes(year, month) {
+    const ym = `${year}-${String(month + 1).padStart(2, '0')}`;
+    return (state.ingresosPuntuales || []).filter(i => (i.fecha || '').slice(0, 7) === ym);
+  }
+
+  function showToast(msg) {
+    const toast = document.getElementById('toast');
+    if (!toast) {
+      alert(msg);
+      return;
+    }
+    toast.textContent = msg;
+    toast.classList.remove('show');
+    void toast.offsetWidth;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2000);
+  }
+
+  // --------- Modales genéricos ---------
+  let confirmCallback = null;
+
+  function openConfirm(message, onConfirm) {
+    const modal = document.getElementById('confirmModal');
+    const text = document.getElementById('confirmText');
+    if (!modal || !text) return;
+    text.textContent = message;
+    confirmCallback = onConfirm || null;
+    modal.classList.add('show');
   }
 
   function closeConfirm() {
-    const overlay = document.getElementById('confirmModal');
-    if (overlay) overlay.classList.remove('active');
-    pendingConfirm = null;
+    const modal = document.getElementById('confirmModal');
+    if (modal) modal.classList.remove('show');
+    confirmCallback = null;
   }
 
-  // ----- Navegación por meses -----
-  function updateMonthDisplay() {
-    const span = document.getElementById('monthDisplay');
-    if (span) {
-      span.textContent = monthNames[currentMonth] + ' ' + currentYear;
+  function setupConfirmModalEvents() {
+    const modal = document.getElementById('confirmModal');
+    if (!modal) return;
+    const btnOk = document.getElementById('confirmOk');
+    const btnCancel = document.getElementById('confirmCancel');
+
+    if (btnOk) {
+      btnOk.addEventListener('click', () => {
+        if (confirmCallback) confirmCallback();
+        closeConfirm();
+      });
+    }
+    if (btnCancel) {
+      btnCancel.addEventListener('click', () => closeConfirm());
+    }
+  }
+
+  // --------- Modal de edición genérico (fijos / sobres / gastos / huchas) ---------
+  let editContext = null;
+
+  function openEditModal(tipo, item) {
+    const modal = document.getElementById('editModal');
+    if (!modal) return;
+    editContext = { tipo, item: { ...item } };
+
+    const titleEl = document.getElementById('editModalTitle');
+    const nameEl = document.getElementById('editNombre');
+    const impEl = document.getElementById('editImporte');
+    const extraEl = document.getElementById('editExtra');
+    const dateEl = document.getElementById('editFecha');
+
+    if (titleEl) {
+      switch (tipo) {
+        case 'fijo':
+          titleEl.textContent = 'Editar gasto fijo';
+          break;
+        case 'sobre':
+          titleEl.textContent = 'Editar presupuesto';
+          break;
+        case 'gasto':
+          titleEl.textContent = 'Editar gasto';
+          break;
+        case 'hucha':
+          titleEl.textContent = 'Editar hucha';
+          break;
+        default:
+          titleEl.textContent = 'Editar';
+      }
     }
 
-    const pickerYear = document.getElementById('pickerYear');
-    if (pickerYear) pickerYear.textContent = currentYear;
+    if (nameEl) nameEl.value = item.nombre || item.categoria || item.desc || '';
+    if (impEl) {
+      if (tipo === 'fijo') {
+        impEl.value = item.importe || 0;
+      } else if (tipo === 'sobre') {
+        impEl.value = item.presupuesto || 0;
+      } else if (tipo === 'hucha') {
+        impEl.value = item.objetivo || 0;
+      } else if (tipo === 'gasto') {
+        impEl.value = item.importe || 0;
+      } else {
+        impEl.value = '';
+      }
+    }
 
-    const mk = getCurrentMonthKey();
-    const monthsGrid = document.getElementById('monthsGrid');
-    if (monthsGrid) {
-      monthsGrid.querySelectorAll('.month-btn').forEach((btn, idx) => {
-        const btnKey = monthKey(currentYear, idx);
-        btn.classList.toggle('selected', btnKey === mk);
+    if (dateEl) {
+      if (tipo === 'gasto') {
+        dateEl.value = item.fecha || '';
+        dateEl.parentElement.style.display = 'block';
+      } else if (tipo === 'fijo') {
+        dateEl.value = item.endMonth || '';
+        dateEl.parentElement.style.display = 'block';
+      } else {
+        dateEl.value = '';
+        dateEl.parentElement.style.display = 'none';
+      }
+    }
+
+    if (extraEl) {
+      if (tipo === 'hucha') {
+        extraEl.style.display = 'block';
+        extraEl.value = item.saldo != null ? item.saldo : '';
+      } else {
+        extraEl.style.display = 'none';
+        extraEl.value = '';
+      }
+    }
+
+    modal.classList.add('show');
+  }
+
+  function closeEditModal() {
+    const modal = document.getElementById('editModal');
+    if (modal) modal.classList.remove('show');
+    editContext = null;
+  }
+
+  function setupEditModalEvents() {
+    const modal = document.getElementById('editModal');
+    if (!modal) return;
+    const btnSave = document.getElementById('editSave');
+    const btnCancel = document.getElementById('editCancel');
+
+    if (btnSave) {
+      btnSave.addEventListener('click', () => {
+        if (!editContext) {
+          closeEditModal();
+          return;
+        }
+        const { tipo, item } = editContext;
+
+        const nameEl = document.getElementById('editNombre');
+        const impEl = document.getElementById('editImporte');
+        const extraEl = document.getElementById('editExtra');
+        const dateEl = document.getElementById('editFecha');
+
+        const nameVal = nameEl ? nameEl.value.trim() : '';
+        const impVal = Number(impEl && impEl.value) || 0;
+        const extraVal = extraEl && extraEl.value;
+        const dateVal = dateEl && dateEl.value;
+
+        if (!nameVal && tipo !== 'gasto') {
+          showToast('El nombre no puede estar vacío.');
+          return;
+        }
+
+        if (tipo === 'fijo') {
+          const idx = state.fijos.findIndex(f => String(f.id) === String(item.id));
+          if (idx >= 0) {
+            state.fijos[idx].nombre = nameVal;
+            state.fijos[idx].importe = impVal;
+            state.fijos[idx].endMonth = dateVal || null;
+          }
+          saveState();
+          renderFijosLista();
+          updateResumenYChips();
+          showToast('Gasto fijo actualizado.');
+        } else if (tipo === 'sobre') {
+          const idx = state.sobres.findIndex(s => String(s.id) === String(item.id));
+          if (idx >= 0) {
+            state.sobres[idx].nombre = nameVal;
+            state.sobres[idx].presupuesto = impVal;
+          }
+          saveState();
+          renderSobresLista();
+          rebuildCategoriasSugerencias();
+          showToast('Presupuesto actualizado.');
+        } else if (tipo === 'gasto') {
+          const idx = state.gastos.findIndex(g => String(g.id) === String(item.id));
+          if (idx >= 0) {
+            state.gastos[idx].categoria = nameVal;
+            state.gastos[idx].importe = impVal;
+            state.gastos[idx].fecha = dateVal || item.fecha;
+          }
+          saveState();
+          renderGastosLista();
+          renderSobresLista();
+          updateResumenYChips();
+          showToast('Gasto actualizado.');
+        } else if (tipo === 'hucha') {
+          const idx = state.huchas.findIndex(h => String(h.id) === String(item.id));
+          if (idx >= 0) {
+            state.huchas[idx].nombre = nameVal;
+            state.huchas[idx].objetivo = impVal;
+            if (extraVal !== null && extraVal !== undefined) {
+              const saldoNum = Number(extraVal);
+              if (!isNaN(saldoNum)) {
+                state.huchas[idx].saldo = saldoNum;
+              }
+            }
+          }
+          saveState();
+          renderHuchas();
+          updateResumenYChips();
+          showToast('Hucha actualizada.');
+        }
+
+        closeEditModal();
       });
     }
 
-    loadNotasMes();
+    if (btnCancel) {
+      btnCancel.addEventListener('click', () => closeEditModal());
+    }
+  }
+
+  // ----------------- Mes actual (cabecera) -----------------
+  function updateMonthDisplay() {
+    const monthEl = document.getElementById('monthLabel');
+    if (monthEl) {
+      monthEl.textContent = `${monthNames[currentMonth]} ${currentYear}`;
+    }
   }
 
   function changeMonth(diff) {
@@ -141,172 +328,87 @@
   }
 
   function setupMonthPicker() {
-    const dropdown = document.getElementById('monthPickerDropdown');
-    const display = document.getElementById('monthDisplay');
-    const monthsGrid = document.getElementById('monthsGrid');
-    const yearPrev = document.getElementById('yearPrev');
-    const yearNext = document.getElementById('yearNext');
+    const dropdown = document.getElementById('monthDropdown');
+    const openBtn = document.getElementById('monthLabel');
+    const overlay = document.getElementById('monthOverlay');
 
-    if (!dropdown || !display || !monthsGrid || !yearPrev || !yearNext) return;
+    if (!dropdown || !openBtn || !overlay) return;
 
-    monthsGrid.innerHTML = '';
-    monthNames.forEach((name, idx) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'month-btn';
-      btn.textContent = name.slice(0, 3);
-      btn.dataset.monthIndex = String(idx);
-      monthsGrid.appendChild(btn);
-    });
+    function close() {
+      dropdown.classList.remove('show');
+      overlay.classList.remove('show');
+    }
 
-    display.addEventListener('click', () => {
-      dropdown.classList.toggle('active');
-    });
+    function open() {
+      const selector = document.getElementById('monthPicker');
+      if (!selector) return;
+      selector.innerHTML = '';
+      const currentYMKey = getCurrentMonthKey();
 
-    yearPrev.addEventListener('click', () => {
-      currentYear -= 1;
-      updateMonthDisplay();
-    });
-    yearNext.addEventListener('click', () => {
-      currentYear += 1;
-      updateMonthDisplay();
-    });
+      for (let y = currentYear - 5; y <= currentYear + 5; y++) {
+        const group = document.createElement('div');
+        group.className = 'month-year-group';
 
-    monthsGrid.addEventListener('click', (e) => {
-      const btn = e.target.closest('.month-btn');
-      if (!btn) return;
-      const idx = Number(btn.dataset.monthIndex || '0');
-      currentMonth = idx;
-      updateMonthDisplay();
-      dropdown.classList.remove('active');
-      renderAll();
-    });
+        const h = document.createElement('div');
+        h.className = 'month-year-title';
+        h.textContent = y;
+        group.appendChild(h);
 
-    document.addEventListener('click', (e) => {
-      if (!dropdown.contains(e.target) && e.target !== display) {
-        dropdown.classList.remove('active');
+        const grid = document.createElement('div');
+        grid.className = 'month-grid';
+
+        for (let m = 0; m < 12; m++) {
+          const ymKey = `${y}-${String(m + 1).padStart(2, '0')}`;
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'month-grid-item';
+          if (ymKey === currentYMKey) btn.classList.add('active');
+          btn.textContent = monthNames[m].slice(0, 3);
+          btn.addEventListener('click', () => {
+            currentYear = y;
+            currentMonth = m;
+            updateMonthDisplay();
+            renderAll();
+            close();
+          });
+          grid.appendChild(btn);
+        }
+
+        group.appendChild(grid);
+        selector.appendChild(group);
       }
-    });
-  }
 
-  // ----- Tabs -----
-  function activateTab(tab) {
-    const sections = Array.from(document.querySelectorAll('.tab-section'));
-    const btns = Array.from(document.querySelectorAll('.tab-btn'));
-
-    sections.forEach(sec => {
-      const isActive = sec.dataset.tab === tab;
-      sec.classList.toggle('active', isActive);
-    });
-    btns.forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.tabTarget === tab);
-    });
-  }
-  window.activateTab = activateTab;
-
-  function setupTabs() {
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const tab = btn.dataset.tabTarget;
-        if (!tab) return;
-        activateTab(tab);
-      });
-    });
-  }
-
-  // ----- Cálculos por mes -----
-  function getIngresosBaseTotal() {
-    const ib = state.ingresosBase || {};
-    return (Number(ib.juan) || 0) +
-           (Number(ib.saray) || 0) +
-           (Number(ib.otros) || 0);
-  }
-
-  function getIngresosPuntualesMes(year, month) {
-    const mk = monthKey(year, month);
-    return state.ingresosPuntuales.filter(ip => {
-      const ym = parseDateToYm(ip.fecha);
-      return ym && monthKey(ym.y, ym.m) === mk;
-    });
-  }
-
-  function getGastosMes(year, month) {
-    const mk = monthKey(year, month);
-    return state.gastos.filter(g => {
-      const ym = parseDateToYm(g.fecha);
-      return ym && monthKey(ym.y, ym.m) === mk;
-    });
-  }
-
-  function getTotalFijosForMonth(year, month) {
-    const mk = monthKey(year, month);
-    return (state.fijos || []).reduce((s, f) => {
-      const end = f.endMonth;
-      if (end && end <= mk) return s; // si endMonth <= mk ya NO aplica
-      return s + (Number(f.importe) || 0);
-    }, 0);
-  }
-
-  function updateResumenYChips() {
-    const ingresosBase = getIngresosBaseTotal();
-    const ingresosPuntualesMes = getIngresosPuntualesMes(currentYear, currentMonth);
-    const totalIngPuntuales = ingresosPuntualesMes.reduce((s, ip) => s + (Number(ip.importe) || 0), 0);
-    const ingresosTotales = ingresosBase + totalIngPuntuales;
-
-    const gastosMes = getGastosMes(currentYear, currentMonth);
-    const totalGastosVar = gastosMes.reduce((s, g) => s + (Number(g.importe) || 0), 0);
-    const totalFijosMes = getTotalFijosForMonth(currentYear, currentMonth);
-    const totalGastos = totalFijosMes + totalGastosVar;
-    const balance = ingresosTotales - totalGastos;
-
-    const chipIngresos = document.getElementById('chipIngresos');
-    const chipGastos = document.getElementById('chipGastos');
-    const chipBalance = document.getElementById('chipBalance');
-    const chipBalanceWrap = document.getElementById('chipBalanceWrap');
-    const chipHuchasTotal = document.getElementById('chipHuchasTotal');
-
-    if (chipIngresos) chipIngresos.textContent = formatCurrency(ingresosTotales);
-    if (chipGastos) chipGastos.textContent = formatCurrency(totalGastos);
-    if (chipBalance) chipBalance.textContent = formatCurrency(balance);
-    if (chipBalanceWrap) {
-      chipBalanceWrap.classList.remove('balance-pos', 'balance-neg');
-      chipBalanceWrap.classList.add(balance >= 0 ? 'balance-pos' : 'balance-neg');
+      dropdown.classList.add('show');
+      overlay.classList.add('show');
     }
 
-    const totalHuchas = state.huchas.reduce((s, h) => s + (Number(h.saldo) || 0), 0);
-    if (chipHuchasTotal) {
-      chipHuchasTotal.textContent = 'Huchas: ' + formatCurrency(totalHuchas);
-    }
-
-    const resIngMes = document.getElementById('resIngMes');
-    const resFijosMes = document.getElementById('resFijosMes');
-    const resVarMes = document.getElementById('resVarMes');
-    const resBalMes = document.getElementById('resBalMes');
-
-    if (resIngMes) resIngMes.textContent = formatCurrency(ingresosTotales);
-    if (resFijosMes) resFijosMes.textContent = formatCurrency(totalFijosMes);
-    if (resVarMes) resVarMes.textContent = formatCurrency(totalGastosVar);
-    if (resBalMes) resBalMes.textContent = formatCurrency(balance);
+    openBtn.addEventListener('click', open);
+    overlay.addEventListener('click', close);
   }
 
-  // ----- Ingresos base -----
+  // ----------------- Ingresos base -----------------
+  function renderIngresosBase() {
+    const juanEl = document.getElementById('ingJuan');
+    const sarayEl = document.getElementById('ingSaray');
+    const otrosEl = document.getElementById('ingOtros');
+
+    if (juanEl) juanEl.value = state.ingresosBase.juan || 0;
+    if (sarayEl) sarayEl.value = state.ingresosBase.saray || 0;
+    if (otrosEl) otrosEl.value = state.ingresosBase.otros || 0;
+  }
+
   function setupIngresosBase() {
-    const ingJuan = document.getElementById('ingJuan');
-    const ingSaray = document.getElementById('ingSaray');
-    const ingOtros = document.getElementById('ingOtros');
-    const btnSave = document.getElementById('btnSaveIngresos');
-
-    if (ingJuan) ingJuan.value = state.ingresosBase.juan || '';
-    if (ingSaray) ingSaray.value = state.ingresosBase.saray || '';
-    if (ingOtros) ingOtros.value = state.ingresosBase.otros || '';
+    const juanEl = document.getElementById('ingJuan');
+    const sarayEl = document.getElementById('ingSaray');
+    const otrosEl = document.getElementById('ingOtros');
+    const btnSave = document.getElementById('btnSaveIngresosBase');
 
     if (btnSave) {
       btnSave.addEventListener('click', () => {
-        state.ingresosBase = {
-          juan: Number(ingJuan && ingJuan.value) || 0,
-          saray: Number(ingSaray && ingSaray.value) || 0,
-          otros: Number(ingOtros && ingOtros.value) || 0
-        };
+        const juan = Number(juanEl && juanEl.value) || 0;
+        const saray = Number(sarayEl && sarayEl.value) || 0;
+        const otros = Number(otrosEl && otrosEl.value) || 0;
+        state.ingresosBase = { juan, saray, otros };
         saveState();
         updateResumenYChips();
         showToast('Ingresos base guardados.');
@@ -314,50 +416,57 @@
     }
   }
 
-  // ----- Ingresos puntuales -----
-  function renderIngresosPuntualesLista() {
+  // ----------------- Ingresos puntuales -----------------
+  function renderIngresosPuntuales() {
     const cont = document.getElementById('ingresosPuntualesLista');
     if (!cont) return;
 
-    const list = getIngresosPuntualesMes(currentYear, currentMonth);
-    if (!list.length) {
+    const ingresosMes = getIngresosPuntualesMes(currentYear, currentMonth);
+    if (!ingresosMes.length) {
       cont.innerHTML = `
         <div class="empty-state">
           <div class="empty-state-icon">💶</div>
-          No hay ingresos puntuales este mes.
+          No has añadido ingresos puntuales este mes.
         </div>`;
       return;
     }
 
     cont.innerHTML = '';
-    list
-      .slice()
-      .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''))
-      .forEach(ip => {
-        const item = document.createElement('div');
-        item.className = 'expense-item';
-        item.innerHTML = `
-          <div class="expense-main">
-            <div class="expense-line1">+ ${formatCurrency(ip.importe)}</div>
-            <div class="expense-line2">${ip.fecha || ''} · ${ip.desc || ''}</div>
-          </div>
-          <div class="expense-actions">
-            <button class="btn btn-danger-chip" data-action="del" data-id="${ip.id}">🗑</button>
-          </div>
-        `;
-        cont.appendChild(item);
-      });
+    ingresosMes.forEach(ing => {
+      const item = document.createElement('div');
+      item.className = 'pill-item';
+      item.innerHTML = `
+        <div class="pill-main">
+          <div class="pill-line1">${formatCurrency(ing.importe)} · ${(ing.desc || 'Ingreso puntual')}</div>
+          <div class="pill-line2">${ing.fecha || ''}</div>
+        </div>
+        <div class="pill-actions">
+          <button class="btn btn-edit" data-action="edit" data-id="${ing.id}">✏</button>
+          <button class="btn btn-danger-chip" data-action="del" data-id="${ing.id}">🗑</button>
+        </div>
+      `;
+      cont.appendChild(item);
+    });
 
     cont.querySelectorAll('button[data-action="del"]').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = btn.dataset.id;
         openConfirm('¿Eliminar este ingreso puntual?', () => {
-          state.ingresosPuntuales = state.ingresosPuntuales.filter(ip => String(ip.id) !== String(id));
+          state.ingresosPuntuales = state.ingresosPuntuales.filter(i => String(i.id) !== String(id));
           saveState();
-          renderIngresosPuntualesLista();
+          renderIngresosPuntuales();
           updateResumenYChips();
           showToast('Ingreso puntual eliminado.');
         });
+      });
+    });
+
+    cont.querySelectorAll('button[data-action="edit"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const ing = state.ingresosPuntuales.find(i => String(i.id) === String(id));
+        if (!ing) return;
+        openEditModal('ingresoPuntual', ing);
       });
     });
   }
@@ -395,112 +504,98 @@
         if (descEl) descEl.value = '';
         if (impEl) impEl.value = '';
 
-        renderIngresosPuntualesLista();
+        renderIngresosPuntuales();
         updateResumenYChips();
         showToast('Ingreso puntual añadido.');
       });
     }
   }
 
-  // ----- Gastos fijos -----
-  function renderFijosTable() {
-    const cont = document.getElementById('fijosTableContainer');
-    const totalEl = document.getElementById('totalFijosDisplay');
+  // ----------------- Gastos fijos -----------------
+  function renderFijosLista() {
+    const cont = document.getElementById('fijosLista');
     if (!cont) return;
 
-    const mk = getCurrentMonthKey();
-    const all = state.fijos || [];
+    const ymNow = { year: currentYear, month: currentMonth };
 
-    // Solo mostramos fijos activos en el mes actual (o en el mes que estés viendo)
-    const activos = all.filter(f => !f.endMonth || f.endMonth > mk);
+    const visibles = (state.fijos || []).filter(f => {
+      if (!f.endMonth) return true;
+      const ym = parseDateToYM(f.endMonth);
+      if (!ym) return true;
+      return compareYM(ymNow.year, ymNow.month, ym.year, ym.month) <= 0;
+    });
 
-    const totalMes = getTotalFijosForMonth(currentYear, currentMonth);
-    if (totalEl) totalEl.textContent = formatCurrency(totalMes);
-
-    if (!activos.length) {
+    if (!visibles.length) {
       cont.innerHTML = `
         <div class="empty-state">
           <div class="empty-state-icon">🏠</div>
-          No hay gastos fijos activos en este mes.
+          No tienes gastos fijos activos este mes.
         </div>`;
       return;
     }
 
-    let html = `
-      <table class="fixed-expense-table">
-        <thead>
-          <tr>
-            <th>Gasto</th>
-            <th>Importe mensual</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-    `;
+    cont.innerHTML = '';
+    visibles.forEach(f => {
+      let endInfo = '';
+      if (f.endMonth) {
+        const ym = parseDateToYM(f.endMonth);
+        if (ym) {
+          endInfo = ` · hasta ${monthNames[ym.month]} ${ym.year}`;
+        }
+      }
 
-    activos.forEach(f => {
-      const end = f.endMonth;
-      const willEnd = end && end > mk;
-      const statusText = end
-        ? `<div class="small-text">${willEnd ? 'Se inactivará desde ' : 'Inactivo desde '}${formatMonthKey(end)}</div>`
-        : '';
-
-      html += `
-        <tr data-id="${f.id}">
-          <td>
-            ${f.nombre || ''}
-            ${statusText}
-          </td>
-          <td>${formatCurrency(f.importe)}</td>
-          <td style="text-align:right;">
-            <button class="btn btn-edit" data-action="edit" data-id="${f.id}">✏</button>
-            <button class="btn btn-danger-chip" data-action="end" data-id="${f.id}" title="Dejar de aplicar desde este mes">🗑</button>
-            <button class="btn btn-outline" data-action="del" data-id="${f.id}" title="Borrar definitivamente">✖</button>
-          </td>
-        </tr>`;
+      const item = document.createElement('div');
+      item.className = 'pill-item';
+      item.innerHTML = `
+        <div class="pill-main">
+          <div class="pill-line1">${f.nombre || 'Sin nombre'}</div>
+          <div class="pill-line2">${formatCurrency(f.importe)}${endInfo}</div>
+        </div>
+        <div class="pill-actions">
+          <button class="btn btn-edit" data-action="edit" data-id="${f.id}">✏</button>
+          <button class="btn btn-danger-chip" data-action="end" data-id="${f.id}" title="Marcar mes de fin">📅</button>
+          <button class="btn btn-danger-chip" data-action="del" data-id="${f.id}" title="Eliminar definitivamente">🗑</button>
+        </div>
+      `;
+      cont.appendChild(item);
     });
 
-    html += '</tbody></table>';
-    cont.innerHTML = html;
-
-    // Papelera: marcar fin desde este mes
-    cont.querySelectorAll('button[data-action="end"]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.id;
-        openConfirm(
-          '¿Dejar de aplicar este gasto fijo a partir de este mes? Los meses anteriores se mantienen igual.',
-          () => {
-            const fijo = state.fijos.find(f => String(f.id) === String(id));
-            if (fijo) {
-              fijo.endMonth = getCurrentMonthKey();
-              saveState();
-              renderFijosTable();
-              updateResumenYChips();
-              showToast('Gasto fijo desactivado a partir de este mes.');
-            }
-          }
-        );
-      });
-    });
-
-    // Botón de borrado definitivo
     cont.querySelectorAll('button[data-action="del"]').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = btn.dataset.id;
-        openConfirm(
-          '¿Eliminar este gasto fijo del histórico? Afectará al cálculo de meses pasados.',
-          () => {
-            state.fijos = state.fijos.filter(f => String(f.id) !== String(id));
-            saveState();
-            renderFijosTable();
-            updateResumenYChips();
-            showToast('Gasto fijo eliminado definitivamente.');
-          }
-        );
+        openConfirm('¿Eliminar este gasto fijo definitivamente?', () => {
+          state.fijos = state.fijos.filter(f => String(f.id) !== String(id));
+          saveState();
+          renderFijosLista();
+          updateResumenYChips();
+          showToast('Gasto fijo eliminado.');
+        });
       });
     });
 
-    // Editar
+    cont.querySelectorAll('button[data-action="end"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const fijo = state.fijos.find(f => String(f.id) === String(id));
+        if (!fijo) return;
+
+        const end = prompt('Introduce mes de fin en formato AAAA-MM (por ejemplo 2028-10):', fijo.endMonth || getCurrentMonthKey());
+        if (!end) return;
+
+        const ym = parseDateToYM(`${end}-01`.slice(0, 10));
+        if (!ym) {
+          showToast('Formato de fecha no válido.');
+          return;
+        }
+
+        fijo.endMonth = `${ym.year}-${String(ym.month + 1).padStart(2, '0')}`;
+        saveState();
+        renderFijosLista();
+        updateResumenYChips();
+        showToast('Mes de fin actualizado.');
+      });
+    });
+
     cont.querySelectorAll('button[data-action="edit"]').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = btn.dataset.id;
@@ -514,64 +609,37 @@
   function setupFijos() {
     const nombreEl = document.getElementById('fijoNombre');
     const impEl = document.getElementById('fijoImporte');
-    const finEl = document.getElementById('fijoFinMes');
     const btnAdd = document.getElementById('btnAddFijo');
 
     if (btnAdd) {
       btnAdd.addEventListener('click', () => {
         const nombre = nombreEl && nombreEl.value.trim();
         const importe = Number(impEl && impEl.value);
-        const endRaw = finEl && finEl.value ? finEl.value.trim() : '';
-        const endMonth = endRaw || null;
 
         if (!nombre) {
           showToast('Pon un nombre al gasto fijo.');
           return;
         }
-        if (isNaN(importe)) {
-          showToast('El importe debe ser un número válido.');
+        if (!(importe > 0)) {
+          showToast('El importe debe ser mayor que 0.');
           return;
         }
 
         const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
-        state.fijos.push({ id, nombre, importe, endMonth });
+        state.fijos.push({ id, nombre, importe, endMonth: null });
         saveState();
 
         if (nombreEl) nombreEl.value = '';
         if (impEl) impEl.value = '';
-        if (finEl) finEl.value = '';
 
-        renderFijosTable();
+        renderFijosLista();
         updateResumenYChips();
         showToast('Gasto fijo añadido.');
       });
     }
   }
 
-  // ----- Categorías sugeridas -----
-  function rebuildCategoriasSugerencias() {
-    const dl = document.getElementById('catSugerencias');
-    if (!dl) return;
-    const cats = new Set();
-
-    state.gastos.forEach(g => {
-      if (g.categoria) cats.add(g.categoria);
-    });
-    state.sobres.forEach(s => {
-      if (s.nombre) cats.add(s.nombre);
-    });
-
-    dl.innerHTML = '';
-    Array.from(cats)
-      .sort((a, b) => a.localeCompare(b))
-      .forEach(c => {
-        const o = document.createElement('option');
-        o.value = c;
-        dl.appendChild(o);
-      });
-  }
-
-  // ----- Gastos variables -----
+  // ----------------- Gastos puntuales -----------------
   function renderGastosLista() {
     const cont = document.getElementById('gastosLista');
     if (!cont) return;
@@ -580,33 +648,29 @@
     if (!list.length) {
       cont.innerHTML = `
         <div class="empty-state">
-          <div class="empty-state-icon">🛒</div>
-          No hay gastos registrados este mes.
+          <div class="empty-state-icon">🧾</div>
+          No has añadido gastos este mes.
         </div>`;
       return;
     }
 
     cont.innerHTML = '';
-    list
-      .slice()
-      .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''))
-      .forEach(g => {
-        const item = document.createElement('div');
-        item.className = 'expense-item';
-        item.innerHTML = `
-          <div class="expense-main">
-            <div class="expense-line1">
-              <span class="amount-neg">- ${formatCurrency(g.importe)}</span> · ${g.categoria || 'Sin categoría'}
-            </div>
-            <div class="expense-line2">${g.fecha || ''} · ${g.desc || ''}</div>
-          </div>
-          <div class="expense-actions">
-            <button class="btn btn-edit" data-action="edit" data-id="${g.id}">✏</button>
-            <button class="btn btn-danger-chip" data-action="del" data-id="${g.id}">🗑</button>
-          </div>
-        `;
-        cont.appendChild(item);
-      });
+    list.forEach(g => {
+      const fecha = g.fecha;
+      const item = document.createElement('div');
+      item.className = 'expense-item';
+      item.innerHTML = `
+        <div class="expense-main">
+          <div class="expense-line1">${formatCurrency(g.importe)} · ${g.categoria || 'Sin categoría'}</div>
+          <div class="expense-line2">${fecha || ''} · ${g.desc || ''}</div>
+        </div>
+        <div class="expense-actions">
+          <button class="btn btn-edit" data-action="edit" data-id="${g.id}">✏</button>
+          <button class="btn btn-danger-chip" data-action="del" data-id="${g.id}">🗑</button>
+        </div>
+      `;
+      cont.appendChild(item);
+    });
 
     cont.querySelectorAll('button[data-action="del"]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -680,103 +744,105 @@
     }
   }
 
-  // ----- Sobres / presupuestos -----
-function renderSobresLista() {
-  const cont = document.getElementById('sobresLista');
-  if (!cont) return;
+  // ----------------- Sobres / presupuestos -----------------
+  function renderSobresLista() {
+    const cont = document.getElementById('sobresLista');
+    if (!cont) return;
 
-  const sobres = state.sobres || [];
-  if (!sobres.length) {
-    cont.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-state-icon">📩</div>
-        No hay presupuestos creados.
-      </div>`;
-    return;
-  }
-
-  const gastosMes = getGastosMes(currentYear, currentMonth);
-  cont.innerHTML = '';
-
-  sobres.forEach(s => {
-    const totalGastado = gastosMes
-      .filter(g => (g.categoria || '').toLowerCase() === (s.nombre || '').toLowerCase())
-      .reduce((sum, g) => sum + (Number(g.importe) || 0), 0);
-
-    const presupuesto = Number(s.presupuesto) || 0;
-    const restante = presupuesto - totalGastado;
-
-    let statusClass = 'good';
-    let statusText = 'Dentro de presupuesto';
-    const ratio = presupuesto > 0 ? totalGastado / presupuesto : 0;
-
-    if (presupuesto === 0) {
-      statusClass = 'warning';
-      statusText = 'Sin presupuesto definido';
-    } else if (ratio >= 0.9 && ratio < 1) {
-      statusClass = 'warning';
-      statusText = 'A punto de agotar presupuesto';
-    } else if (ratio >= 1) {
-      statusClass = 'over';
-      statusText = 'Presupuesto superado';
+    const sobres = state.sobres || [];
+    if (!sobres.length) {
+      cont.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📩</div>
+          No hay presupuestos creados.
+        </div>`;
+      return;
     }
 
-    const pct = presupuesto > 0 ? Math.min(100, (totalGastado / presupuesto) * 100) : 0;
+    const gastosMes = getGastosMes(currentYear, currentMonth);
+    cont.innerHTML = '';
 
-    const card = document.createElement('div');
-    card.className = 'budget-card';
-    card.innerHTML = `
-      <div class="budget-card-header">
-        <div class="budget-name">📩 ${s.nombre || 'Sin nombre'}</div>
-        <div>
-          <button class="btn btn-edit" data-action="edit" data-id="${s.id}">✏</button>
-          <button class="btn btn-danger-chip" data-action="del" data-id="${s.id}">🗑</button>
-        </div>
-      </div>
-      <div class="budget-amounts">
-        <div class="budget-amount-item">
-          <div class="budget-amount-label">Presupuesto</div>
-          <div class="budget-amount-value">${formatCurrency(presupuesto)}</div>
-        </div>
-        <div class="budget-amount-item">
-          <div class="budget-amount-label">Gastado</div>
-          <div class="budget-amount-value">${formatCurrency(totalGastado)}</div>
-        </div>
-      </div>
-      <div class="budget-progress-bar">
-        <div class="budget-progress-fill ${ratio >= 1 ? 'over' : ''}" style="width:${pct}%;"></div>
-      </div>
-      <div class="budget-status ${statusClass}">
-        ${statusText} · Restante: ${formatCurrency(restante)}
-      </div>
-    `;
-    cont.appendChild(card);
-  });
+    sobres.forEach(s => {
+      const totalGastado = gastosMes
+        .filter(g => (g.categoria || '').toLowerCase() === (s.nombre || '').toLowerCase())
+        .reduce((sum, g) => sum + (Number(g.importe) || 0), 0);
 
-  // borrar sobre
-  cont.querySelectorAll('button[data-action="del"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.id;
-      openConfirm('¿Eliminar este sobre/presupuesto?', () => {
-        state.sobres = state.sobres.filter(s => String(s.id) !== String(id));
-        saveState();
-        renderSobresLista();
-        rebuildCategoriasSugerencias();
-        showToast('Presupuesto eliminado.');
+      const presupuesto = Number(s.presupuesto) || 0;
+      const restante = presupuesto - totalGastado;
+
+      let statusClass = 'good';
+      let statusText = 'Dentro de presupuesto';
+      const ratio = presupuesto > 0 ? totalGastado / presupuesto : 0;
+
+      if (presupuesto === 0) {
+        statusClass = 'warning';
+        statusText = 'Sin presupuesto definido';
+      } else if (ratio >= 0.9 && ratio < 1) {
+        statusClass = 'warning';
+        statusText = 'A punto de agotar presupuesto';
+      } else if (ratio >= 1) {
+        statusClass = 'over';
+        statusText = 'Presupuesto superado';
+      }
+
+      const pct = presupuesto > 0 ? Math.min(100, (totalGastado / presupuesto) * 100) : 0;
+
+      const card = document.createElement('div');
+      card.className = 'budget-card';
+      card.innerHTML = `
+        <div class="budget-card-header">
+          <div class="budget-name">📩 ${s.nombre || 'Sin nombre'}</div>
+          <div>
+            <button class="btn btn-edit" data-action="edit" data-id="${s.id}">✏</button>
+            <button class="btn btn-danger-chip" data-action="del" data-id="${s.id}">🗑</button>
+          </div>
+        </div>
+        <div class="budget-amounts">
+          <div class="budget-amount-item">
+            <div class="budget-amount-label">Presupuesto</div>
+            <div class="budget-amount-value">${formatCurrency(presupuesto)}</div>
+          </div>
+          <div class="budget-amount-item">
+            <div class="budget-amount-label">Gastado</div>
+            <div class="budget-amount-value">${formatCurrency(totalGastado)}</div>
+          </div>
+          <div class="budget-amount-item">
+            <div class="budget-amount-label">Restante</div>
+            <div class="budget-amount-value">${formatCurrency(restante)}</div>
+          </div>
+        </div>
+        <div class="budget-progress-bar">
+          <div class="budget-progress-fill ${ratio >= 1 ? 'over' : ''}" style="width:${pct}%;"></div>
+        </div>
+        <div class="budget-status ${statusClass}">
+          ${statusText}
+        </div>
+      `;
+      cont.appendChild(card);
+    });
+
+    cont.querySelectorAll('button[data-action="del"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        openConfirm('¿Eliminar este sobre/presupuesto?', () => {
+          state.sobres = state.sobres.filter(s => String(s.id) !== String(id));
+          saveState();
+          renderSobresLista();
+          rebuildCategoriasSugerencias();
+          showToast('Presupuesto eliminado.');
+        });
       });
     });
-  });
 
-  // editar sobre
-  cont.querySelectorAll('button[data-action="edit"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.id;
-      const sobre = state.sobres.find(s => String(s.id) === String(id));
-      if (!sobre) return;
-      openEditModal('sobre', sobre);
+    cont.querySelectorAll('button[data-action="edit"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const sobre = state.sobres.find(s => String(s.id) === String(id));
+        if (!sobre) return;
+        openEditModal('sobre', sobre);
+      });
     });
-  });
-}
+  }
 
   function setupSobres() {
     const nombreEl = document.getElementById('sobreNombre');
@@ -789,7 +855,7 @@ function renderSobresLista() {
         const presupuesto = Number(impEl && impEl.value);
 
         if (!nombre) {
-          showToast('Pon un nombre al sobre.');
+          showToast('Pon un nombre al presupuesto.');
           return;
         }
         if (isNaN(presupuesto)) {
@@ -811,7 +877,7 @@ function renderSobresLista() {
     }
   }
 
-  // ----- Huchas -----
+  // ----------------- Huchas -----------------
   function renderHuchas() {
     const cont = document.getElementById('huchasLista');
     const select = document.getElementById('huchaSelect');
@@ -833,16 +899,16 @@ function renderSobresLista() {
 
     cont.innerHTML = '';
     list.forEach(h => {
-      const objetivo = Number(h.objetivo) || 0;
       const saldo = Number(h.saldo) || 0;
-      const ratio = objetivo > 0 ? Math.min(1, saldo / objetivo) : 0;
+      const objetivo = Number(h.objetivo) || 0;
+      const ratio = objetivo > 0 ? saldo / objetivo : 0;
       const pct = objetivo > 0 ? Math.min(100, (saldo / objetivo) * 100) : 0;
 
       const card = document.createElement('div');
       card.className = 'budget-card';
       card.innerHTML = `
         <div class="budget-card-header">
-          <div class="budget-name">🐷 ${h.nombre || 'Sin nombre'}</div>
+          <div class="budget-name">🐷 ${h.nombre || 'Hucha sin nombre'}</div>
           <div>
             <button class="btn btn-edit" data-action="edit" data-id="${h.id}">✏</button>
             <button class="btn btn-danger-chip" data-action="del" data-id="${h.id}">🗑</button>
@@ -932,7 +998,6 @@ function renderSobresLista() {
 
         renderHuchas();
         updateResumenYChips();
-        rebuildCategoriasSugerencias();
         showToast('Hucha creada.');
       });
     }
@@ -951,74 +1016,104 @@ function renderSobresLista() {
           showToast('El importe debe ser mayor que 0.');
           return;
         }
-
         const hucha = state.huchas.find(h => String(h.id) === String(huchaId));
         if (!hucha) {
           showToast('Hucha no encontrada.');
           return;
         }
 
-        if (accion === 'aportar') {
+        if (accion === 'ingresar') {
           hucha.saldo = (Number(hucha.saldo) || 0) + importe;
-          const today = new Date();
-          const fecha = today.toISOString().slice(0, 10);
-          const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
-          state.gastos.push({
-            id,
-            fecha,
-            categoria: 'Huchas',
-            desc: 'Ahorro en ' + (hucha.nombre || ''),
-            importe
-          });
-          showToast('Aportación registrada en la hucha y como gasto.');
-        } else {
-          const saldoActual = Number(hucha.saldo) || 0;
-          if (importe > saldoActual) {
-            showToast('No hay saldo suficiente en la hucha.');
-            return;
-          }
-          hucha.saldo = saldoActual - importe;
-          showToast('Retirada registrada en la hucha.');
+        } else if (accion === 'retirar') {
+          hucha.saldo = (Number(hucha.saldo) || 0) - importe;
         }
 
         saveState();
         if (impMovEl) impMovEl.value = '';
         renderHuchas();
-        renderGastosLista();
-        renderSobresLista();
         updateResumenYChips();
+        showToast('Movimiento registrado.');
       });
     }
   }
 
-  // ----- Notas -----
-  function loadNotasMes() {
-    const area = document.getElementById('notasMes');
-    if (!area) return;
-    const mk = getCurrentMonthKey();
-    area.value = state.notasPorMes[mk] || '';
+  // ----------------- Notas -----------------
+  function renderNotas() {
+    const txt = document.getElementById('notasMes');
+    if (!txt) return;
+    const key = getCurrentMonthKey();
+    txt.value = state.notasPorMes[key] || '';
   }
 
   function setupNotas() {
-    const area = document.getElementById('notasMes');
-    const btn = document.getElementById('btnSaveNotas');
-    if (!area || !btn) return;
-
-    btn.addEventListener('click', () => {
-      const mk = getCurrentMonthKey();
-      state.notasPorMes[mk] = area.value || '';
+    const txt = document.getElementById('notasMes');
+    if (!txt) return;
+    txt.addEventListener('change', () => {
+      const key = getCurrentMonthKey();
+      state.notasPorMes[key] = txt.value || '';
       saveState();
-      showToast('Notas del mes guardadas.');
+      showToast('Notas guardadas.');
     });
   }
 
-  // ----- Export / Import JSON -----
+  // ----------------- Resumen cabecera -----------------
+  function updateResumenYChips() {
+    const ymNow = { year: currentYear, month: currentMonth };
+
+    const ingresosBaseTotal =
+      (Number(state.ingresosBase.juan) || 0) +
+      (Number(state.ingresosBase.saray) || 0) +
+      (Number(state.ingresosBase.otros) || 0);
+
+    const ingresosPuntualesMes = getIngresosPuntualesMes(currentYear, currentMonth)
+      .reduce((sum, ing) => sum + (Number(ing.importe) || 0), 0);
+
+    let fijosMes = 0;
+    (state.fijos || []).forEach(f => {
+      if (!f.endMonth) {
+        fijosMes += Number(f.importe) || 0;
+      } else {
+        const ym = parseDateToYM(f.endMonth);
+        if (!ym) {
+          fijosMes += Number(f.importe) || 0;
+        } else {
+          if (compareYM(ymNow.year, ymNow.month, ym.year, ym.month) <= 0) {
+            fijosMes += Number(f.importe) || 0;
+          }
+        }
+      }
+    });
+
+    const gastosMes = getGastosMes(currentYear, currentMonth).reduce(
+      (sum, g) => sum + (Number(g.importe) || 0),
+      0
+    );
+
+    const huchasSaldoTotal = (state.huchas || []).reduce(
+      (sum, h) => sum + (Number(h.saldo) || 0),
+      0
+    );
+
+    const totalIngresos = ingresosBaseTotal + ingresosPuntualesMes;
+    const totalGastos = fijosMes + gastosMes;
+    const balance = totalIngresos - totalGastos - huchasSaldoTotal;
+
+    const ingresoEl = document.getElementById('chipIngresosValor');
+    const gastoEl = document.getElementById('chipGastosValor');
+    const balanceEl = document.getElementById('chipBalanceValor');
+    const huchasEl = document.getElementById('chipHuchasValor');
+
+    if (ingresoEl) ingresoEl.textContent = formatCurrency(totalIngresos);
+    if (gastoEl) gastoEl.textContent = formatCurrency(totalGastos);
+    if (balanceEl) balanceEl.textContent = formatCurrency(balance);
+    if (huchasEl) huchasEl.textContent = formatCurrency(huchasSaldoTotal);
+  }
+
+  // ----------------- Export / Import JSON -----------------
   function setupExportImportJson() {
     const btnExport = document.getElementById('btnExportJson');
-    const fileInput = document.getElementById('importFile');
-    const btnImportFile = document.getElementById('btnImportJsonFile');
-    const textArea = document.getElementById('importJsonText');
-    const btnImportText = document.getElementById('btnImportJsonText');
+    const btnImport = document.getElementById('btnImportJson');
+    const fileInput = document.getElementById('fileImportJson');
 
     if (btnExport) {
       btnExport.addEventListener('click', () => {
@@ -1026,233 +1121,167 @@ function renderSobresLista() {
         const blob = new Blob([dataStr], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        const mk = getCurrentMonthKey();
         a.href = url;
-        a.download = 'economia_familiar_' + mk + '.json';
+        a.download = `economia_familiar_${getCurrentMonthKey()}.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        showToast('✅ Copia de seguridad descargada');
+        showToast('Datos exportados en JSON.');
       });
     }
 
-    if (btnImportFile && fileInput) {
-      btnImportFile.addEventListener('click', () => {
+    if (btnImport && fileInput) {
+      btnImport.addEventListener('click', () => fileInput.click());
+
+      fileInput.addEventListener('change', () => {
         const file = fileInput.files && fileInput.files[0];
-        if (!file) {
-          showToast('⚠️ Selecciona un archivo JSON');
-          return;
-        }
+        if (!file) return;
         const reader = new FileReader();
-        reader.onload = (ev) => {
+        reader.onload = e => {
           try {
-            const data = JSON.parse(ev.target.result);
-            applyBackupPayload(data);
+            const imported = JSON.parse(e.target.result);
+            if (!imported || typeof imported !== 'object') {
+              showToast('El archivo no tiene un formato válido.');
+              return;
+            }
+
+            const overwrite = confirm('¿Quieres sobrescribir todos los datos actuales con el archivo importado?\n\nAceptar = Sobrescribir\nCancelar = Intentar fusionar sin borrar lo existente.');
+
+            if (overwrite) {
+              state = {
+                ingresosBase: imported.ingresosBase || { juan: 0, saray: 0, otros: 0 },
+                fijos: imported.fijos || [],
+                sobres: imported.sobres || [],
+                huchas: imported.huchas || [],
+                ingresosPuntuales: imported.ingresosPuntuales || [],
+                gastos: imported.gastos || [],
+                notasPorMes: imported.notasPorMes || {}
+              };
+            } else {
+              const mergeById = (currentArr, newArr) => {
+                const map = new Map();
+                currentArr.forEach(item => map.set(String(item.id), item));
+                newArr.forEach(item => {
+                  const key = String(item.id);
+                  if (map.has(key)) {
+                    const replace = confirm(`Se ha encontrado un elemento con el mismo id (${key}).\n¿Quieres sobrescribirlo?\nAceptar = Sobrescribir\nCancelar = Mantener el existente.`);
+                    if (replace) map.set(key, item);
+                  } else {
+                    map.set(key, item);
+                  }
+                });
+                return Array.from(map.values());
+              };
+
+              state.ingresosBase = imported.ingresosBase || state.ingresosBase;
+              state.fijos = mergeById(state.fijos, imported.fijos || []);
+              state.sobres = mergeById(state.sobres, imported.sobres || []);
+              state.huchas = mergeById(state.huchas, imported.huchas || []);
+              state.ingresosPuntuales = mergeById(
+                state.ingresosPuntuales,
+                imported.ingresosPuntuales || []
+              );
+              state.gastos = mergeById(state.gastos, imported.gastos || []);
+              state.notasPorMes = { ...state.notasPorMes, ...(imported.notasPorMes || {}) };
+            }
+
             saveState();
             renderAll();
-            showToast('✅ Datos importados correctamente');
-          } catch (e) {
-            console.error(e);
-            showToast('❌ Error al leer el JSON');
+            showToast('Datos importados correctamente.');
+          } catch (err) {
+            console.error('Error importando JSON:', err);
+            showToast('Error al importar el archivo JSON.');
+          } finally {
+            fileInput.value = '';
           }
         };
-        reader.readAsText(file, 'utf-8');
-      });
-    }
-
-    if (btnImportText && textArea) {
-      btnImportText.addEventListener('click', () => {
-        const content = textArea.value.trim();
-        if (!content) {
-          showToast('⚠️ Pega el contenido del JSON');
-          return;
-        }
-        try {
-          const data = JSON.parse(content);
-          applyBackupPayload(data);
-          saveState();
-          renderAll();
-          showToast('✅ Datos importados correctamente');
-        } catch (e) {
-          console.error(e);
-          showToast('❌ El texto no es un JSON válido');
-        }
+        reader.readAsText(file);
       });
     }
   }
 
-  function applyBackupPayload(data) {
-    if (!data || typeof data !== 'object') {
-      throw new Error('Backup inválido');
-    }
-
-    const newState = {
-      ingresosBase: { juan: 0, saray: 0, otros: 0 },
-      fijos: [],
-      sobres: [],
-      huchas: [],
-      ingresosPuntuales: [],
-      gastos: [],
-      notasPorMes: {}
-    };
-
-    if (data.ingresosBase && typeof data.ingresosBase === 'object') {
-      newState.ingresosBase = {
-        juan: Number(data.ingresosBase.juan || 0),
-        saray: Number(data.ingresosBase.saray || 0),
-        otros: Number(data.ingresosBase.otros || 0)
-      };
-    } else if (data.baseConfig && typeof data.baseConfig === 'object') {
-      newState.ingresosBase = {
-        juan: Number(data.baseConfig.juan || 0),
-        saray: Number(data.baseConfig.saray || 0),
-        otros: Number(data.baseConfig.otros || 0)
-      };
-    }
-
-    if (Array.isArray(data.fijos)) {
-      newState.fijos = data.fijos.map(f => ({
-        id: String(f.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
-        nombre: f.nombre || '',
-        importe: Number(f.importe || 0),
-        endMonth: f.endMonth || null
-      }));
-    } else if (Array.isArray(data.gastosFijos)) {
-      newState.fijos = data.gastosFijos.map(f => ({
-        id: String(f.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
-        nombre: f.nombre || '',
-        importe: Number(f.importe || 0),
-        endMonth: f.endMonth || null
-      }));
-    }
-
-    if (Array.isArray(data.sobres)) {
-      newState.sobres = data.sobres.map(s => ({
-        id: String(s.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
-        nombre: s.nombre || '',
-        presupuesto: Number(s.presupuesto || s.importe || 0)
-      }));
-    } else if (data.sobres && typeof data.sobres === 'object') {
-      newState.sobres = Object.keys(data.sobres).map(nombre => ({
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2),
-        nombre,
-        presupuesto: Number(data.sobres[nombre] || 0)
-      }));
-    }
-
-    if (Array.isArray(data.huchas)) {
-      newState.huchas = data.huchas.map(h => ({
-        id: String(h.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
-        nombre: h.nombre || '',
-        objetivo: Number(h.objetivo || 0),
-        saldo: Number(h.saldo || 0)
-      }));
-    }
-
-    if (Array.isArray(data.ingresosPuntuales)) {
-      newState.ingresosPuntuales = data.ingresosPuntuales.map(ip => ({
-        id: String(ip.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
-        fecha: ip.fecha || '',
-        desc: ip.desc || '',
-        importe: Number(ip.importe || 0)
-      }));
-    }
-
-    if (Array.isArray(data.gastos)) {
-      newState.gastos = data.gastos.map(g => ({
-        id: String(g.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
-        fecha: g.fecha || '',
-        categoria: g.categoria || 'Otros',
-        desc: g.desc || '',
-        importe: Number(g.importe || 0)
-      }));
-    } else if (Array.isArray(data.movimientos)) {
-      newState.gastos = data.movimientos.map(g => ({
-        id: String(g.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
-        fecha: g.fecha || '',
-        categoria: g.categoria || 'Otros',
-        desc: g.desc || '',
-        importe: Number(g.importe || 0)
-      }));
-    }
-
-    if (data.notasPorMes && typeof data.notasPorMes === 'object') {
-      newState.notasPorMes = data.notasPorMes;
-    } else if (data.notasByMonth && typeof data.notasByMonth === 'object') {
-      newState.notasPorMes = data.notasByMonth;
-    }
-
-    state = newState;
-  }
-
-  // ----- Importar CSV -----
+  // ----------------- Import CSV (solo gastos) -----------------
   function setupImportCsv() {
-    const fileInput = document.getElementById('csvFile');
-    const btnImport = document.getElementById('btnImportCsv');
-    if (!btnImport || !fileInput) return;
+    const btnImportCsv = document.getElementById('btnImportCsv');
+    const fileInputCsv = document.getElementById('fileImportCsv');
 
-    btnImport.addEventListener('click', () => {
-      const file = fileInput.files && fileInput.files[0];
-      if (!file) {
-        showToast('⚠️ Selecciona un archivo CSV');
-        return;
-      }
+    if (!btnImportCsv || !fileInputCsv) return;
+
+    btnImportCsv.addEventListener('click', () => fileInputCsv.click());
+
+    fileInputCsv.addEventListener('change', () => {
+      const file = fileInputCsv.files && fileInputCsv.files[0];
+      if (!file) return;
 
       const reader = new FileReader();
-      reader.onload = (ev) => {
+      reader.onload = e => {
         try {
-          const text = ev.target.result;
-          const lines = text.split('\n').filter(l => l.trim());
-          let count = 0;
+          const text = e.target.result;
+          const lines = text.split(/\r?\n/).filter(l => l.trim());
+          if (lines.length <= 1) {
+            showToast('El CSV no contiene datos suficientes.');
+            return;
+          }
+          const header = lines[0].split(';').map(h => h.trim().toLowerCase());
+          const idxFecha = header.indexOf('fecha');
+          const idxCat = header.indexOf('categoria');
+          const idxDesc = header.indexOf('descripcion');
+          const idxImporte = header.indexOf('importe');
 
-          lines.forEach((line, idx) => {
-            if (idx === 0) return;
-            const parts = line.split(';');
-            if (parts.length < 3) return;
+          if (idxFecha === -1 || idxCat === -1 || idxImporte === -1) {
+            showToast('El CSV debe contener al menos las columnas: fecha, categoria, importe.');
+            return;
+          }
 
-            const concepto = parts[0] ? parts[0].trim() : '';
-            const fechaStr = parts[1] ? parts[1].trim() : '';
-            const importeStr = parts[2] ? parts[2].trim().replace(',', '.') : '';
-            const importe = parseFloat(importeStr);
+          const nuevos = [];
+          for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(';');
+            const fecha = cols[idxFecha] ? cols[idxFecha].trim() : '';
+            const categoria = cols[idxCat] ? cols[idxCat].trim() : '';
+            const desc = idxDesc >= 0 && cols[idxDesc] ? cols[idxDesc].trim() : '';
+            const importe = Number((cols[idxImporte] || '').replace(',', '.'));
 
-            if (isNaN(importe) || importe >= 0) return;
+            if (!fecha || !categoria || !(importe > 0)) continue;
 
-            const importePos = Math.abs(importe);
             const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+            nuevos.push({ id, fecha, categoria, desc, importe });
+          }
 
-            state.gastos.push({
-              id,
-              fecha: fechaStr || new Date().toISOString().slice(0, 10),
-              categoria: 'Banco',
-              desc: concepto || 'Cargo bancario',
-              importe: importePos
-            });
-            count++;
-          });
+          if (!nuevos.length) {
+            showToast('No se encontraron filas válidas en el CSV.');
+            return;
+          }
+
+          const sobrescribir = confirm('¿Quieres fusionar estos gastos con los existentes o sobrescribirlos?\nAceptar = Sobrescribir\nCancelar = Fusionar.');
+          if (sobrescribir) {
+            state.gastos = nuevos;
+          } else {
+            state.gastos = [...state.gastos, ...nuevos];
+          }
 
           saveState();
           renderGastosLista();
           renderSobresLista();
           updateResumenYChips();
-          showToast(`✅ ${count} cargos importados del CSV`);
-        } catch (e) {
-          console.error(e);
-          showToast('❌ Error al leer el CSV');
+          showToast('Gastos importados desde CSV.');
+        } catch (err) {
+          console.error('Error importando CSV:', err);
+          showToast('Error al importar el archivo CSV.');
+        } finally {
+          fileInputCsv.value = '';
         }
       };
-      reader.readAsText(file, 'utf-8');
+      reader.readAsText(file);
     });
   }
 
-  // ----- Reset -----
+  // ----------------- Reset de datos -----------------
   function setupReset() {
-    const btn = document.getElementById('btnResetAll');
-    if (!btn) return;
-
-    btn.addEventListener('click', () => {
-      openConfirm('¿Estás seguro de que quieres borrar TODOS los datos? Esta acción no se puede deshacer.', () => {
-        localStorage.removeItem(STORAGE_KEY);
+    const btnReset = document.getElementById('btnResetAll');
+    if (!btnReset) return;
+    btnReset.addEventListener('click', () => {
+      openConfirm('¿Seguro que quieres borrar TODOS los datos de la app?', () => {
         state = {
           ingresosBase: { juan: 0, saray: 0, otros: 0 },
           fijos: [],
@@ -1262,247 +1291,117 @@ function renderSobresLista() {
           gastos: [],
           notasPorMes: {}
         };
+        saveState();
         renderAll();
-        showToast('✅ Todos los datos han sido borrados');
+        showToast('Todos los datos han sido borrados.');
       });
     });
   }
 
-  // ----- Modal edición genérica -----
-  function openEditModal(type, data) {
-    const overlay = document.getElementById('editModal');
-    const titleEl = document.getElementById('modalTitle');
-    const contentEl = document.getElementById('modalContent');
-    const saveBtn = document.getElementById('modalSave');
-    if (!overlay || !titleEl || !contentEl || !saveBtn) return;
+  // ----------------- Sugerencias de categorías -----------------
+  function rebuildCategoriasSugerencias() {
+    const datalist = document.getElementById('categoriasSugeridas');
+    if (!datalist) return;
 
-    let html = '';
+    const nombresSobres = (state.sobres || []).map(s => (s.nombre || '').trim()).filter(Boolean);
+    const nombresGastos = (state.gastos || []).map(g => (g.categoria || '').trim()).filter(Boolean);
 
-    if (type === 'fijo') {
-      titleEl.textContent = 'Editar gasto fijo';
-      const endVal = data.endMonth || '';
-      html = `
-        <div class="field-group">
-          <label>Nombre</label>
-          <input type="text" id="editNombre" value="${data.nombre || ''}" />
-        </div>
-        <div class="field-group">
-          <label>Importe mensual (€)</label>
-          <input type="number" id="editImporte" step="0.01" inputmode="decimal" value="${data.importe}" />
-        </div>
-        <div class="field-group">
-          <label>Último mes en el que se cobra (opcional)</label>
-          <input type="month" id="editEndMonth" value="${endVal || ''}" />
-          <div class="small-text">Si lo dejas vacío, el gasto no tiene fecha de fin.</div>
-        </div>`;
-    } else if (type === 'gasto') {
-      titleEl.textContent = 'Editar gasto';
-      html = `
-        <div class="field-group">
-          <label>Fecha</label>
-          <input type="date" id="editFecha" value="${data.fecha || ''}" />
-        </div>
-        <div class="field-group">
-          <label>Categoría</label>
-          <input type="text" id="editCategoria" value="${data.categoria || ''}" />
-        </div>
-        <div class="field-group">
-          <label>Descripción</label>
-          <input type="text" id="editDesc" value="${data.desc || ''}" />
-        </div>
-        <div class="field-group">
-          <label>Importe (€)</label>
-          <input type="number" id="editImporte" step="0.01" inputmode="decimal" value="${data.importe}" />
-        </div>`;
-    } else if (type === 'sobre') {
-      titleEl.textContent = 'Editar presupuesto';
-      html = `
-        <div class="field-group">
-          <label>Nombre del sobre</label>
-          <input type="text" id="editNombre" value="${data.nombre || ''}" />
-        </div>
-        <div class="field-group">
-          <label>Presupuesto mensual (€)</label>
-          <input type="number" id="editImporte" step="0.01" inputmode="decimal" value="${data.presupuesto}" />
-        </div>`;
-    } else if (type === 'hucha') {
-      titleEl.textContent = 'Editar hucha';
-      html = `
-        <div class="field-group">
-          <label>Nombre</label>
-          <input type="text" id="editNombre" value="${data.nombre || ''}" />
-        </div>
-        <div class="field-group">
-          <label>Objetivo (€)</label>
-          <input type="number" id="editObjetivo" step="0.01" inputmode="decimal" value="${data.objetivo || 0}" />
-        </div>
-        <div class="field-group">
-          <label>Saldo actual (€)</label>
-          <input type="number" id="editSaldo" step="0.01" inputmode="decimal" value="${data.saldo || 0}" />
-        </div>`;
-    } else {
-      titleEl.textContent = 'Editar';
-      html = '<p>No hay campos para editar.</p>';
-    }
-
-    contentEl.innerHTML = html;
-    saveBtn.dataset.editType = type;
-    saveBtn.dataset.editId = data.id;
-    overlay.classList.add('active');
+    const set = new Set([...nombresSobres, ...nombresGastos]);
+    datalist.innerHTML = '';
+    Array.from(set).sort().forEach(cat => {
+      const opt = document.createElement('option');
+      opt.value = cat;
+      datalist.appendChild(opt);
+    });
   }
 
-  function closeEditModal() {
-    const overlay = document.getElementById('editModal');
-    const contentEl = document.getElementById('modalContent');
-    const saveBtn = document.getElementById('modalSave');
+  // ----------------- Swipe entre pestañas -----------------
+  function setupSwipe() {
+    const app = document.querySelector('.app');
+    const tabs = Array.from(document.querySelectorAll('[data-tab]'));
+    const sections = Array.from(document.querySelectorAll('.tab-section'));
 
-    if (overlay) overlay.classList.remove('active');
-    if (contentEl) contentEl.innerHTML = '';
-    if (saveBtn) {
-      saveBtn.dataset.editType = '';
-      saveBtn.dataset.editId = '';
+    if (!app || !tabs.length || !sections.length) return;
+
+    let currentIndex = tabs.findIndex(t => t.classList.contains('active'));
+    if (currentIndex < 0) currentIndex = 0;
+
+    function activateTab(index, direction = 0) {
+      if (index < 0 || index >= tabs.length || index === currentIndex) return;
+
+      const newTab = tabs[index];
+      const oldTab = tabs[currentIndex];
+
+      oldTab.classList.remove('active');
+      newTab.classList.add('active');
+
+      const oldSectionId = oldTab.getAttribute('data-tab');
+      const newSectionId = newTab.getAttribute('data-tab');
+
+      const oldSection = document.getElementById(oldSectionId);
+      const newSection = document.getElementById(newSectionId);
+      if (!oldSection || !newSection) return;
+
+      sections.forEach(sec => sec.classList.remove('active', 'slide-in-left', 'slide-in-right', 'slide-out-left', 'slide-out-right'));
+
+      oldSection.classList.add(direction === 1 ? 'slide-out-left' : direction === -1 ? 'slide-out-right' : '');
+      newSection.classList.add('active', direction === 1 ? 'slide-in-right' : direction === -1 ? 'slide-in-left' : '');
+
+      currentIndex = index;
     }
-  }
 
-  function setupEditModalEvents() {
-    const modalClose = document.getElementById('modalClose');
-    const modalCancel = document.getElementById('modalCancel');
-    const modalSave = document.getElementById('modalSave');
-    const overlay = document.getElementById('editModal');
-
-    if (modalClose) modalClose.addEventListener('click', closeEditModal);
-    if (modalCancel) modalCancel.addEventListener('click', closeEditModal);
-    if (overlay) {
-      overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) closeEditModal();
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => {
+        const direction = index > currentIndex ? 1 : -1;
+        activateTab(index, direction);
       });
-    }
+    });
 
-    if (modalSave) {
-      modalSave.addEventListener('click', () => {
-        const type = modalSave.dataset.editType;
-        const id = modalSave.dataset.editId;
-        if (!type || !id) {
-          closeEditModal();
-          return;
+    let startX = 0;
+    let isSwiping = false;
+
+    app.addEventListener('touchstart', e => {
+      if (e.touches.length !== 1) return;
+      startX = e.touches[0].clientX;
+      isSwiping = true;
+    });
+
+    app.addEventListener('touchmove', e => {
+      if (!isSwiping || e.touches.length !== 1) return;
+      const diffX = e.touches[0].clientX - startX;
+      if (Math.abs(diffX) > 50) {
+        isSwiping = false;
+        if (diffX < 0 && currentIndex < tabs.length - 1) {
+          activateTab(currentIndex + 1, 1);
+        } else if (diffX > 0 && currentIndex > 0) {
+          activateTab(currentIndex - 1, -1);
         }
+      }
+    });
 
-        if (type === 'fijo') {
-          const nombreEl = document.getElementById('editNombre');
-          const impEl = document.getElementById('editImporte');
-          const endEl = document.getElementById('editEndMonth');
-          const fijo = state.fijos.find(f => String(f.id) === String(id));
-          if (fijo && nombreEl && impEl) {
-            fijo.nombre = nombreEl.value.trim();
-            fijo.importe = Number(impEl.value) || 0;
-            if (endEl && endEl.value.trim()) {
-              fijo.endMonth = endEl.value.trim();
-            } else {
-              fijo.endMonth = null;
-            }
-            saveState();
-            renderFijosTable();
-            updateResumenYChips();
-            showToast('Gasto fijo actualizado.');
-          }
-        } else if (type === 'gasto') {
-          const fechaEl = document.getElementById('editFecha');
-          const catEl = document.getElementById('editCategoria');
-          const descEl = document.getElementById('editDesc');
-          const impEl = document.getElementById('editImporte');
-          const gasto = state.gastos.find(g => String(g.id) === String(id));
-          if (gasto && fechaEl && catEl && descEl && impEl) {
-            gasto.fecha = fechaEl.value || gasto.fecha;
-            gasto.categoria = catEl.value.trim() || gasto.categoria;
-            gasto.desc = descEl.value.trim();
-            gasto.importe = Number(impEl.value) || 0;
-            saveState();
-            renderGastosLista();
-            renderSobresLista();
-            rebuildCategoriasSugerencias();
-            updateResumenYChips();
-            showToast('Gasto actualizado.');
-          }
-        } else if (type === 'sobre') {
-          const nombreEl = document.getElementById('editNombre');
-          const impEl = document.getElementById('editImporte');
-          const sobre = state.sobres.find(s => String(s.id) === String(id));
-          if (sobre && nombreEl && impEl) {
-            sobre.nombre = nombreEl.value.trim() || sobre.nombre;
-            sobre.presupuesto = Number(impEl.value) || 0;
-            saveState();
-            renderSobresLista();
-            rebuildCategoriasSugerencias();
-            showToast('Presupuesto actualizado.');
-          }
-        } else if (type === 'hucha') {
-          const nombreEl = document.getElementById('editNombre');
-          const objEl = document.getElementById('editObjetivo');
-          const saldoEl = document.getElementById('editSaldo');
-          const hucha = state.huchas.find(h => String(h.id) === String(id));
-          if (hucha && nombreEl && objEl && saldoEl) {
-            hucha.nombre = nombreEl.value.trim() || hucha.nombre;
-            hucha.objetivo = Number(objEl.value) || 0;
-            hucha.saldo = Number(saldoEl.value) || 0;
-            saveState();
-            renderHuchas();
-            updateResumenYChips();
-            showToast('Hucha actualizada.');
-          }
-        }
-
-        closeEditModal();
-      });
-    }
+    app.addEventListener('touchend', () => {
+      isSwiping = false;
+    });
   }
 
-  // ----- Confirm modal events -----
-  function setupConfirmModalEvents() {
-    const overlay = document.getElementById('confirmModal');
-    const btnOk = document.getElementById('confirmOk');
-    const btnCancel = document.getElementById('confirmCancel');
-    const btnClose = document.getElementById('confirmClose');
-
-    if (btnOk) {
-      btnOk.addEventListener('click', () => {
-        if (pendingConfirm) pendingConfirm();
-        closeConfirm();
-      });
-    }
-    if (btnCancel) btnCancel.addEventListener('click', closeConfirm);
-    if (btnClose) btnClose.addEventListener('click', closeConfirm);
-
-    if (overlay) {
-      overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) closeConfirm();
-      });
-    }
-  }
-
-  // ----- Render general -----
+  // ----------------- Render global -----------------
   function renderAll() {
-    setupIngresosBase();
-    renderIngresosPuntualesLista();
-    renderFijosTable();
+    updateMonthDisplay();
+    renderIngresosBase();
+    renderIngresosPuntuales();
+    renderFijosLista();
     renderGastosLista();
     renderSobresLista();
     renderHuchas();
-    rebuildCategoriasSugerencias();
-    loadNotasMes();
+    renderNotas();
     updateResumenYChips();
   }
 
-  // ----- Init -----
+  // ----------------- Inicio -----------------
   document.addEventListener('DOMContentLoaded', () => {
     loadState();
-
-    const now = new Date();
-    currentYear = now.getFullYear();
-    currentMonth = now.getMonth();
-
-    setupTabs();
-    setupMonthPicker();
     updateMonthDisplay();
+    setupMonthPicker();
 
     const prevBtn = document.getElementById('btnPrevMonth');
     const nextBtn = document.getElementById('btnNextMonth');
@@ -1521,7 +1420,9 @@ function renderSobresLista() {
     setupReset();
     setupEditModalEvents();
     setupConfirmModalEvents();
+    setupSwipe();
 
+    rebuildCategoriasSugerencias();
     renderAll();
   });
 })();
