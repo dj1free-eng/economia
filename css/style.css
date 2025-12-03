@@ -592,9 +592,7 @@ main {
   display: flex; 
   flex-direction: column; 
   gap: 0.5rem; 
-  margin-top: 1rem; 
-  max-height: 400px; 
-  overflow-y: auto; 
+  margin-top: 1rem;
   width: 100%;
 }
 .pill-item {
