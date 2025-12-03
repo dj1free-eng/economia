@@ -926,4 +926,29 @@ main {
     font-size: 0.75rem;
     padding: 0.3rem 0.5rem;
   }
+  /* REPARAR BARRAS DE PROGRESO (HUCHAS Y PRESUPUESTOS) */
+.budget-progress-bar {
+  position: relative;
+  width: 100%;
+  background: #e5e7eb;
+  border-radius: 999px;
+  overflow: hidden;
+  height: 10px;              /* un poco más alta para que se vea mejor */
+  margin-top: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.budget-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+  transition: width 0.4s ease;
+  border-radius: 999px;
+}
+
+.budget-progress-fill.over {
+  background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
+}
 }
