@@ -903,3 +903,43 @@ main {
     padding: 0.3rem 0.5rem;
   }
 }
+/* Animación lateral tipo carrusel para cambio de pestañas */
+.tab-section {
+  display: none;
+  opacity: 0;
+}
+
+.tab-section.active {
+  display: block;
+  opacity: 1;
+}
+
+.tab-section.slide-in-from-right {
+  animation: slideInFromRight 0.35s ease-out;
+}
+
+.tab-section.slide-in-from-left {
+  animation: slideInFromLeft 0.35s ease-out;
+}
+
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInFromLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
