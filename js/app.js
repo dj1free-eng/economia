@@ -2,11 +2,11 @@
   'use strict';
 
   // ----- Constantes y estado -----
-  const STORAGE_KEY = 'ecoApp_v11d_state';
+  const STORAGE_KEY = 'ecoApp_v11e_state';
 
   let state = {
     ingresosBase: { juan: 0, saray: 0, otros: 0 },
-    fijos: [],              // {id, nombre, importe}
+    fijos: [],              // {id, nombre, importe, endMonth?}
     sobres: [],             // {id, nombre, presupuesto}
     huchas: [],             // {id, nombre, objetivo, saldo}
     ingresosPuntuales: [],  // {id, fecha, desc, importe}
@@ -59,6 +59,16 @@
 
   function getCurrentMonthKey() {
     return monthKey(currentYear, currentMonth);
+  }
+
+  function formatMonthKey(mk) {
+    if (!mk) return '';
+    const [y, m] = mk.split('-');
+    const idx = Number(m) - 1;
+    if (idx >= 0 && idx < 12) {
+      return monthNames[idx] + ' ' + y;
+    }
+    return mk;
   }
 
   function formatCurrency(value) {
@@ -231,8 +241,20 @@
     });
   }
 
+  // Total global de fijos (sin tener en cuenta meses)
   function getTotalFijos() {
     return state.fijos.reduce((s, f) => s + (Number(f.importe) || 0), 0);
+  }
+
+  // Total de fijos aplicables en un mes concreto (respeta endMonth)
+  function getTotalFijosForMonth(year, month) {
+    const mk = monthKey(year, month);
+    return (state.fijos || []).reduce((s, f) => {
+      const end = f.endMonth; // "YYYY-MM" o undefined
+      // Si tiene endMonth y es <= mk, ya NO aplica en este mes ni en los siguientes
+      if (end && end <= mk) return s;
+      return s + (Number(f.importe) || 0);
+    }, 0);
   }
 
   function updateResumenYChips() {
@@ -243,8 +265,8 @@
 
     const gastosMes = getGastosMes(currentYear, currentMonth);
     const totalGastosVar = gastosMes.reduce((s, g) => s + (Number(g.importe) || 0), 0);
-    const totalFijos = getTotalFijos();
-    const totalGastos = totalFijos + totalGastosVar;
+    const totalFijosMes = getTotalFijosForMonth(currentYear, currentMonth);
+    const totalGastos = totalFijosMes + totalGastosVar;
     const balance = ingresosTotales - totalGastos;
 
     const chipIngresos = document.getElementById('chipIngresos');
@@ -273,7 +295,7 @@
     const resBalMes = document.getElementById('resBalMes');
 
     if (resIngMes) resIngMes.textContent = formatCurrency(ingresosTotales);
-    if (resFijosMes) resFijosMes.textContent = formatCurrency(totalFijos);
+    if (resFijosMes) resFijosMes.textContent = formatCurrency(totalFijosMes);
     if (resVarMes) resVarMes.textContent = formatCurrency(totalGastosVar);
     if (resBalMes) resBalMes.textContent = formatCurrency(balance);
   }
@@ -398,8 +420,8 @@
     if (!cont) return;
 
     const list = state.fijos || [];
-    const total = getTotalFijos();
-    if (totalEl) totalEl.textContent = formatCurrency(total);
+    const totalMes = getTotalFijosForMonth(currentYear, currentMonth);
+    if (totalEl) totalEl.textContent = formatCurrency(totalMes);
 
     if (!list.length) {
       cont.innerHTML = `
@@ -421,10 +443,21 @@
         </thead>
         <tbody>
     `;
+    const mk = getCurrentMonthKey();
     list.forEach(f => {
+      const end = f.endMonth;
+      const isInactiveNow = end && end <= mk;
+
+      const statusText = end
+        ? `<div class="small-text">${isInactiveNow ? 'Inactivo desde ' : 'Se inactivará desde '}${formatMonthKey(end)}</div>`
+        : '';
+
       html += `
         <tr data-id="${f.id}">
-          <td>${f.nombre || ''}</td>
+          <td>
+            ${f.nombre || ''}
+            ${statusText}
+          </td>
           <td>${formatCurrency(f.importe)}</td>
           <td style="text-align:right;">
             <button class="btn btn-edit" data-action="edit" data-id="${f.id}">✏</button>
@@ -438,13 +471,19 @@
     cont.querySelectorAll('button[data-action="del"]').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = btn.dataset.id;
-        openConfirm('¿Eliminar este gasto fijo?', () => {
-          state.fijos = state.fijos.filter(f => String(f.id) !== String(id));
-          saveState();
-          renderFijosTable();
-          updateResumenYChips();
-          showToast('Gasto fijo eliminado.');
-        });
+        openConfirm(
+          '¿Dejar de aplicar este gasto fijo a partir de este mes? Los meses anteriores se mantienen igual.',
+          () => {
+            const fijo = state.fijos.find(f => String(f.id) === String(id));
+            if (fijo) {
+              fijo.endMonth = getCurrentMonthKey(); // primer mes en el que ya NO aplica
+              saveState();
+              renderFijosTable();
+              updateResumenYChips();
+              showToast('Gasto fijo desactivado a partir de este mes.');
+            }
+          }
+        );
       });
     });
 
@@ -478,7 +517,7 @@
         }
 
         const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
-        state.fijos.push({ id, nombre, importe });
+        state.fijos.push({ id, nombre, importe, endMonth: null });
         saveState();
 
         if (nombreEl) nombreEl.value = '';
@@ -1060,13 +1099,15 @@
       newState.fijos = data.fijos.map(f => ({
         id: String(f.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
         nombre: f.nombre || '',
-        importe: Number(f.importe || 0)
+        importe: Number(f.importe || 0),
+        endMonth: f.endMonth || null
       }));
     } else if (Array.isArray(data.gastosFijos)) {
       newState.fijos = data.gastosFijos.map(f => ({
         id: String(f.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
         nombre: f.nombre || '',
-        importe: Number(f.importe || 0)
+        importe: Number(f.importe || 0),
+        endMonth: f.endMonth || null
       }));
     }
 
