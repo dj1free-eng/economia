@@ -681,99 +681,102 @@
   }
 
   // ----- Sobres / presupuestos -----
-  function renderSobresLista() {
-    const cont = document.getElementById('sobresLista');
-    if (!cont) return;
+function renderSobresLista() {
+  const cont = document.getElementById('sobresLista');
+  if (!cont) return;
 
-    const sobres = state.sobres || [];
-    if (!sobres.length) {
-      cont.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-state-icon">📩</div>
-          No hay presupuestos creados.
-        </div>`;
-      return;
+  const sobres = state.sobres || [];
+  if (!sobres.length) {
+    cont.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">📩</div>
+        No hay presupuestos creados.
+      </div>`;
+    return;
+  }
+
+  const gastosMes = getGastosMes(currentYear, currentMonth);
+  cont.innerHTML = '';
+
+  sobres.forEach(s => {
+    const totalGastado = gastosMes
+      .filter(g => (g.categoria || '').toLowerCase() === (s.nombre || '').toLowerCase())
+      .reduce((sum, g) => sum + (Number(g.importe) || 0), 0);
+
+    const presupuesto = Number(s.presupuesto) || 0;
+    const restante = presupuesto - totalGastado;
+
+    let statusClass = 'good';
+    let statusText = 'Dentro de presupuesto';
+    const ratio = presupuesto > 0 ? totalGastado / presupuesto : 0;
+
+    if (presupuesto === 0) {
+      statusClass = 'warning';
+      statusText = 'Sin presupuesto definido';
+    } else if (ratio >= 0.9 && ratio < 1) {
+      statusClass = 'warning';
+      statusText = 'A punto de agotar presupuesto';
+    } else if (ratio >= 1) {
+      statusClass = 'over';
+      statusText = 'Presupuesto superado';
     }
 
-    const gastosMes = getGastosMes(currentYear, currentMonth);
-    cont.innerHTML = '';
+    const pct = presupuesto > 0 ? Math.min(100, (totalGastado / presupuesto) * 100) : 0;
 
-    sobres.forEach(s => {
-      const totalGastado = gastosMes
-        .filter(g => (g.categoria || '').toLowerCase() === (s.nombre || '').toLowerCase())
-        .reduce((sum, g) => sum + (Number(g.importe) || 0), 0);
-
-      const presupuesto = Number(s.presupuesto) || 0;
-      const restante = presupuesto - totalGastado;
-      let statusClass = 'good';
-      let statusText = 'Dentro de presupuesto';
-      const ratio = presupuesto > 0 ? totalGastado / presupuesto : 0;
-
-      if (presupuesto === 0) {
-        statusClass = 'warning';
-        statusText = 'Sin presupuesto definido';
-      } else if (ratio >= 0.9 && ratio < 1) {
-        statusClass = 'warning';
-        statusText = 'A punto de agotar presupuesto';
-      } else if (ratio >= 1) {
-        statusClass = 'over';
-        statusText = 'Presupuesto superado';
-      }
-
-      const pct = presupuesto > 0 ? Math.min(100, (totalGastado / presupuesto) * 100) : 0;
-
-      const card = document.createElement('div');
-      card.className = 'budget-card';
-      card.innerHTML = `
-        <div class="budget-card-header">
-          <div class="budget-name">📩 ${s.nombre || 'Sin nombre'}</div>
-          <div>
-            <button class="btn btn-edit" data-action="edit" data-id="${s.id}">✏</button>
-            <button class="btn btn-danger-chip" data-action="del" data-id="${s.id}">🗑</button>
-          </div>
+    const card = document.createElement('div');
+    card.className = 'budget-card';
+    card.innerHTML = `
+      <div class="budget-card-header">
+        <div class="budget-name">📩 ${s.nombre || 'Sin nombre'}</div>
+        <div>
+          <button class="btn btn-edit" data-action="edit" data-id="${s.id}">✏</button>
+          <button class="btn btn-danger-chip" data-action="del" data-id="${s.id}">🗑</button>
         </div>
-        <div class="budget-amounts">
-          <div class="budget-amount-item">
-            <div class="budget-amount-label">Presupuesto</div>
-            <div class="budget-amount-value">${formatCurrency(presupuesto)}</div>
-          </div>
-          <div class="budget-amount-item">
-            <div class="budget-amount-label">Gastado</div>
-            <div class="budget-amount-value">${formatCurrency(totalGastado)}</div>
-          </div>
+      </div>
+      <div class="budget-amounts">
+        <div class="budget-amount-item">
+          <div class="budget-amount-label">Presupuesto</div>
+          <div class="budget-amount-value">${formatCurrency(presupuesto)}</div>
         </div>
-        <div class="budget-progress-bar">
-          <div class="budget-progress-fill ${ratio >= 1 ? 'over' : ''}" style="width:${pct}%;"></div>
+        <div class="budget-amount-item">
+          <div class="budget-amount-label">Gastado</div>
+          <div class="budget-amount-value">${formatCurrency(totalGastado)}</div>
         </div>
-        <div class="budget-status ${statusClass}">
-          ${statusText} · Restante: ${formatCurrency(restante)}
-        </div>
-      `;
-      cont.appendChild(card);
-    });
+      </div>
+      <div class="budget-progress-bar">
+        <div class="budget-progress-fill ${ratio >= 1 ? 'over' : ''}" style="width:${pct}%;"></div>
+      </div>
+      <div class="budget-status ${statusClass}">
+        ${statusText} · Restante: ${formatCurrency(restante)}
+      </div>
+    `;
+    cont.appendChild(card);
+  });
 
-    cont.querySelectorAll('button[data-action="del"]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.id;
-        openConfirm('¿Eliminar este sobre/presupuesto?', () => {
-          state.sobres = state.sobres.filter(s => String(s.id) !== String(id));
-          saveState();
-          renderSobresLista();
-          rebuildCategoriasSugerencias();
-          showToast('Presupuesto eliminado.');
-        });
+  // borrar sobre
+  cont.querySelectorAll('button[data-action="del"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      openConfirm('¿Eliminar este sobre/presupuesto?', () => {
+        state.sobres = state.sobres.filter(s => String(s.id) !== String(id));
+        saveState();
+        renderSobresLista();
+        rebuildCategoriasSugerencias();
+        showToast('Presupuesto eliminado.');
       });
     });
+  });
 
-    cont.querySelectorAll('button[data-action="edit"]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.id;
-        const sobre = state.sobres.find(s => String(s.id) === String(id));
-        if (!sobre) return;
-        openEditModal('sobre', sobre);
-      });
+  // editar sobre
+  cont.querySelectorAll('button[data-action="edit"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const sobre = state.sobres.find(s => String(s.id) === String(id));
+      if (!sobre) return;
+      openEditModal('sobre', sobre);
     });
-  }
+  });
+}
 
   function setupSobres() {
     const nombreEl = document.getElementById('sobreNombre');
