@@ -1,4 +1,3 @@
-
 (() => {
   'use strict';
 
@@ -170,7 +169,7 @@
   }
 
   // ----- Tabs (botones inferiores) -----
-  function activateTab(tab, animateDirection) {
+  function activateTab(tab) {
     const sections = Array.from(document.querySelectorAll('.tab-section'));
     const btns = Array.from(document.querySelectorAll('.tab-btn'));
     sections.forEach(sec => {
@@ -627,313 +626,451 @@
           state.sobres = state.sobres.filter(s => String(s.id) !== String(id));
           saveState();
           renderSobresLista();
-          rebuildCategoriasSugerencias();
-          showToast('Presupuesto eliminado.');
-        });
-      });
-    });
+          rebuildCategoriasSuger​​​​​​​​​​​​​​​​encias();
+showToast(‘Presupuesto eliminado.’);
+});
+});
+});
+cont.querySelectorAll('button[data-action="edit"]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const id = btn.dataset.id;
+    const sobre = state.sobres.find(s => String(s.id) === String(id));
+    if (!sobre) return;
+    openEditModal('sobre', sobre);
+  });
+});
 
-    cont.querySelectorAll('button[data-action="edit"]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.id;
-        const sobre = state.sobres.find(s => String(s.id) === String(id));
-        if (!sobre) return;
-        openEditModal('sobre', sobre);
-      });
-    });
-  }
-
-  function setupSobres() {
-    const nombreEl = document.getElementById('sobreNombre');
-    const impEl = document.getElementById('sobreImporte');
-    const btnAdd = document.getElementById('btnAddSobre');
-
-    if (btnAdd) {
-      btnAdd.addEventListener('click', () => {
-        const nombre = nombreEl && nombreEl.value.trim();
-        const presupuesto = Number(impEl && impEl.value);
-        if (!nombre) {
-          showToast('Pon un nombre al sobre.');
-          return;
-        }
-        if (!(presupuesto >= 0)) {
-          showToast('El presupuesto debe ser un número válido.');
-          return;
-        }
-        const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
-        state.sobres.push({ id, nombre, presupuesto });
-        saveState();
-        if (nombreEl) nombreEl.value = '';
-        if (impEl) impEl.value = '';
-        renderSobresLista();
-        rebuildCategoriasSugerencias();
-        showToast('Presupuesto creado.');
-      });
+}
+function setupSobres() {
+const nombreEl = document.getElementById(‘sobreNombre’);
+const impEl = document.getElementById(‘sobreImporte’);
+const btnAdd = document.getElementById(‘btnAddSobre’);
+if (btnAdd) {
+  btnAdd.addEventListener('click', () => {
+    const nombre = nombreEl && nombreEl.value.trim();
+    const presupuesto = Number(impEl && impEl.value);
+    if (!nombre) {
+      showToast('Pon un nombre al sobre.');
+      return;
     }
-  }
+    if (!(presupuesto >= 0)) {
+      showToast('El presupuesto debe ser un número válido.');
+      return;
+    }
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+    state.sobres.push({ id, nombre, presupuesto });
+    saveState();
+    if (nombreEl) nombreEl.value = '';
+    if (impEl) impEl.value = '';
+    renderSobresLista();
+    rebuildCategoriasSugerencias();
+    showToast('Presupuesto creado.');
+  });
+}
 
-  // ----- Huchas -----
-  function renderHuchas() {
-    const cont = document.getElementById('huchasLista');
-    const select = document.getElementById('huchaSelect');
+}
+// —– Huchas —–
+function renderHuchas() {
+const cont = document.getElementById(‘huchasLista’);
+const select = document.getElementById(‘huchaSelect’);
+if (select) {
+select.innerHTML = ‘<option value="">– Elige una hucha –</option>’;
+}
+const list = state.huchas || [];
+if (!cont) return;
+if (!list.length) {
+cont.innerHTML = ‘<div class="empty-state"><div class="empty-state-icon">🐷</div>No has creado ninguna hucha todavía.</div>’;
+} else {
+cont.innerHTML = ‘’;
+list.forEach(h => {
+const objetivo = Number(h.objetivo) || 0;
+const saldo = Number(h.saldo) || 0;
+const ratio = objetivo > 0 ? Math.min(1, saldo / objetivo) : 0;
+const pct = objetivo > 0 ? Math.min(100, (saldo / objetivo) * 100) : 0;
+const card = document.createElement(‘div’);
+card.className = ‘budget-card’;
+card.innerHTML = <div class="budget-card-header"> <div class="budget-name">🐷 ${h.nombre || 'Sin nombre'}</div> <div> <button class="btn btn-edit" data-action="edit" data-id="${h.id}">✏</button> <button class="btn btn-danger-chip" data-action="del" data-id="${h.id}">🗑</button> </div> </div> <div class="budget-amounts"> <div class="budget-amount-item"> <div class="budget-amount-label">Saldo</div> <div class="budget-amount-value">${formatCurrency(saldo)}</div> </div> <div class="budget-amount-item"> <div class="budget-amount-label">Objetivo</div> <div class="budget-amount-value">${objetivo ? formatCurrency(objetivo) : '—'}</div> </div> </div> <div class="budget-progress-bar"> <div class="budget-progress-fill" style="width:${pct}%;"></div> </div> <div class="budget-status ${ratio >= 1 ? 'good' : 'warning'}"> ${objetivo ? (ratio >= 1 ? '¡Objetivo conseguido!' : 'Progreso hacia objetivo') : 'Hucha sin objetivo fijo'} </div>;
+cont.appendChild(card);
     if (select) {
-      select.innerHTML = '<option value="">-- Elige una hucha --</option>';
+      const opt = document.createElement('option');
+      opt.value = h.id;
+      opt.textContent = `${h.nombre} (${formatCurrency(saldo)})`;
+      select.appendChild(opt);
     }
-    const list = state.huchas || [];
-    if (!cont) return;
-    if (!list.length) {
-      cont.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🐷</div>No has creado ninguna hucha todavía.</div>';
-    } else {
-      cont.innerHTML = '';
-      list.forEach(h => {
-        const objetivo = Number(h.objetivo) || 0;
-        const saldo = Number(h.saldo) || 0;
-        const ratio = objetivo > 0 ? Math.min(1, saldo / objetivo) : 0;
-        const pct = objetivo > 0 ? Math.min(100, (saldo / objetivo) * 100) : 0;
-        const card = document.createElement('div');
-        card.className = 'budget-card';
-        card.innerHTML = `
-          <div class="budget-card-header">
-            <div class="budget-name">🐷 ${h.nombre || 'Sin nombre'}</div>
-            <div>
-              <button class="btn btn-edit" data-action="edit" data-id="${h.id}">✏</button>
-              <button class="btn btn-danger-chip" data-action="del" data-id="${h.id}">🗑</button>
-            </div>
-          </div>
-          <div class="budget-amounts">
-            <div class="budget-amount-item">
-              <div class="budget-amount-label">Saldo</div>
-              <div class="budget-amount-value">${formatCurrency(saldo)}</div>
-            </div>
-            <div class="budget-amount-item">
-              <div class="budget-amount-label">Objetivo</div>
-              <div class="budget-amount-value">${objetivo ? formatCurrency(objetivo) : '—'}</div>
-            </div>
-          </div>
-          <div class="budget-progress-bar">
-            <div class="budget-progress-fill" style="width:${pct}%;"></div>
-          </div>
-          <div class="budget-status ${ratio >= 1 ? 'good' : 'warning'}">
-            ${objetivo ? (ratio >= 1 ? '¡Objetivo conseguido!' : 'Progreso hacia objetivo') : 'Hucha sin objetivo fijo'}
-          </div>
-        `;
-        cont.appendChild(card);
+  });
 
-        if (select) {
-          const opt = document.createElement('option');
-          opt.value = h.id;
-          opt.textContent = `${h.nombre} (${formatCurrency(saldo)})`;
-          select.appendChild(opt);
-        }
-      });
-
-      cont.querySelectorAll('button[data-action="del"]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const id = btn.dataset.id;
-          openConfirm('¿Eliminar esta hucha? El saldo se perderá en el control.', () => {
-            state.huchas = state.huchas.filter(h => String(h.id) !== String(id));
-            saveState();
-            renderHuchas();
-            updateResumenYChips();
-            showToast('Hucha eliminada.');
-          });
-        });
-      });
-
-      cont.querySelectorAll('button[data-action="edit"]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const id = btn.dataset.id;
-          const hucha = state.huchas.find(h => String(h.id) === String(id));
-          if (!hucha) return;
-          openEditModal('hucha', hucha);
-        });
-      });
-    }
-  }
-
-  function setupHuchas() {
-    const nombreEl = document.getElementById('huchaNombre');
-    const objEl = document.getElementById('huchaObjetivo');
-    const saldoEl = document.getElementById('huchaSaldoInicial');
-    const btnAdd = document.getElementById('btnAddHucha');
-
-    const select = document.getElementById('huchaSelect');
-    const impMovEl = document.getElementById('huchaImporte');
-    const accionEl = document.getElementById('huchaAccion');
-    const btnMov = document.getElementById('btnHuchaMovimiento');
-
-    if (btnAdd) {
-      btnAdd.addEventListener('click', () => {
-        const nombre = nombreEl && nombreEl.value.trim();
-        const objetivo = Number(objEl && objEl.value) || 0;
-        const saldoInicial = Number(saldoEl && saldoEl.value) || 0;
-        if (!nombre) {
-          showToast('Pon un nombre a la hucha.');
-          return;
-        }
-        const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
-        state.huchas.push({ id, nombre, objetivo, saldo: saldoInicial });
-        saveState();
-        if (nombreEl) nombreEl.value = '';
-        if (objEl) objEl.value = '';
-        if (saldoEl) saldoEl.value = '';
-        renderHuchas();
-        updateResumenYChips();
-        rebuildCategoriasSugerencias();
-        showToast('Hucha creada.');
-      });
-    }
-
-    if (btnMov) {
-      btnMov.addEventListener('click', () => {
-        const huchaId = select && select.value;
-        const importe = Number(impMovEl && impMovEl.value);
-        const accion = accionEl && accionEl.value;
-        if (!huchaId) {
-          showToast('Elige una hucha.');
-          return;
-        }
-        if (!(importe > 0)) {
-          showToast('El importe debe ser mayor que 0.');
-          return;
-        }
-        const hucha = state.huchas.find(h => String(h.id) === String(huchaId));
-        if (!hucha) {
-          showToast('Hucha no encontrada.');
-          return;
-        }
-        if (accion === 'aportar') {
-          hucha.saldo = (Number(hucha.saldo) || 0) + importe;
-          // Registrar gasto categoría "Huchas" en mes actual
-          const today = new Date();
-          const fecha = today.toISOString().slice(0,10);
-          const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
-          state.gastos.push({
-            id,
-            fecha,
-            categoria: 'Huchas',
-            desc: 'Ahorro en ' + (hucha.nombre || ''),
-            importe
-          });
-          showToast('Aportación registrada en la hucha y como gasto.');
-        } else {
-          const saldoActual = Number(hucha.saldo) || 0;
-          if (importe > saldoActual) {
-            showToast('No hay saldo suficiente en la hucha.');
-            return;
-          }
-          hucha.saldo = saldoActual - importe;
-          showToast('Retirada registrada en la hucha.');
-        }
-        saveState();
-        if (impMovEl) impMovEl.value = '';
-        renderHuchas();
-        renderGastosLista();
-        renderSobresLista();
-        updateResumenYChips();
-      });
-    }
-  }
-
-  // ----- Notas -----
-  function loadNotasMes() {
-    const area = document.getElementById('notasMes');
-    if (!area) return;
-    const mk = getCurrentMonthKey();
-    area.value = state.notasPorMes[mk] || '';
-  }
-
-  function setupNotas() {
-    const area = document.getElementById('notasMes');
-    const btn = document.getElementById('btnSaveNotas');
-    if (!area || !btn) return;
+  cont.querySelectorAll('button[data-action="del"]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const mk = getCurrentMonthKey();
-      state.notasPorMes[mk] = area.value || '';
-      saveState();
-      showToast('Notas del mes guardadas.');
+      const id = btn.dataset.id;
+      openConfirm('¿Eliminar esta hucha? El saldo se perderá en el control.', () => {
+        state.huchas = state.huchas.filter(h => String(h.id) !== String(id));
+        saveState();
+        renderHuchas();
+        updateResumenYChips();
+        showToast('Hucha eliminada.');
+      });
     });
+  });
+
+  cont.querySelectorAll('button[data-action="edit"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const hucha = state.huchas.find(h => String(h.id) === String(id));
+      if (!hucha) return;
+      openEditModal('hucha', hucha);
+    });
+  });
+}
+
+}
+function setupHuchas() {
+const nombreEl = document.getElementById(‘huchaNombre’);
+const objEl = document.getElementById(‘huchaObjetivo’);
+const saldoEl = document.getElementById(‘huchaSaldoInicial’);
+const btnAdd = document.getElementById(‘btnAddHucha’);
+const select = document.getElementById('huchaSelect');
+const impMovEl = document.getElementById('huchaImporte');
+const accionEl = document.getElementById('huchaAccion');
+const btnMov = document.getElementById('btnHuchaMovimiento');
+
+if (btnAdd) {
+  btnAdd.addEventListener('click', () => {
+    const nombre = nombreEl && nombreEl.value.trim();
+    const objetivo = Number(objEl && objEl.value) || 0;
+    const saldoInicial = Number(saldoEl && saldoEl.value) || 0;
+    if (!nombre) {
+      showToast('Pon un nombre a la hucha.');
+      return;
+    }
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+    state.huchas.push({ id, nombre, objetivo, saldo: saldoInicial });
+    saveState();
+    if (nombreEl) nombreEl.value = '';
+    if (objEl) objEl.value = '';
+    if (saldoEl) saldoEl.value = '';
+    renderHuchas();
+    updateResumenYChips();
+    rebuildCategoriasSugerencias();
+    showToast('Hucha creada.');
+  });
+}
+
+if (btnMov) {
+  btnMov.addEventListener('click', () => {
+    const huchaId = select && select.value;
+    const importe = Number(impMovEl && impMovEl.value);
+    const accion = accionEl && accionEl.value;
+    if (!huchaId) {
+      showToast('Elige una hucha.');
+      return;
+    }
+    if (!(importe > 0)) {
+      showToast('El importe debe ser mayor que 0.');
+      return;
+    }
+    const hucha = state.huchas.find(h => String(h.id) === String(huchaId));
+    if (!hucha) {
+      showToast('Hucha no encontrada.');
+      return;
+    }
+    if (accion === 'aportar') {
+      hucha.saldo = (Number(hucha.saldo) || 0) + importe;
+      // Registrar gasto categoría "Huchas" en mes actual
+      const today = new Date();
+      const fecha = today.toISOString().slice(0,10);
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+      state.gastos.push({
+        id,
+        fecha,
+        categoria: 'Huchas',
+        desc: 'Ahorro en ' + (hucha.nombre || ''),
+        importe
+      });
+      showToast('Aportación registrada en la hucha y como gasto.');
+    } else {
+      const saldoActual = Number(hucha.saldo) || 0;
+      if (importe > saldoActual) {
+        showToast('No hay saldo suficiente en la hucha.');
+        return;
+      }
+      hucha.saldo = saldoActual - importe;
+      showToast('Retirada registrada en la hucha.');
+    }
+    saveState();
+    if (impMovEl) impMovEl.value = '';
+    renderHuchas();
+    renderGastosLista();
+    renderSobresLista();
+    updateResumenYChips();
+  });
+}
+
+}
+// —– Notas —–
+function loadNotasMes() {
+const area = document.getElementById(‘notasMes’);
+if (!area) return;
+const mk = getCurrentMonthKey();
+area.value = state.notasPorMes[mk] || ‘’;
+}
+function setupNotas() {
+const area = document.getElementById(‘notasMes’);
+const btn = document.getElementById(‘btnSaveNotas’);
+if (!area || !btn) return;
+btn.addEventListener(‘click’, () => {
+const mk = getCurrentMonthKey();
+state.notasPorMes[mk] = area.value || ‘’;
+saveState();
+showToast(‘Notas del mes guardadas.’);
+});
+}
+// —– Export / Import JSON —–
+function setupExportImportJson() {
+const btnExport = document.getElementById(‘btnExportJson’);
+const fileInput = document.getElementById(‘importFile’);
+const btnImportFile = document.getElementById(‘btnImportJsonFile’);
+const textArea = document.getElementById(‘importJsonText’);
+const btnImportText = document.getElementById(‘btnImportJsonText’);
+if (btnExport) {
+  btnExport.addEventListener('click', () => {
+    const dataStr = JSON.stringify(state, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const mk = getCurrentMonthKey();
+    a.href = url;
+    a.download = 'economia_familiar_' + mk + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('✅ Copia de seguridad descargada');
+  });
+}
+
+if (btnImportFile && fileInput) {
+  btnImportFile.addEventListener('click', () => {
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) {
+      showToast('⚠️ Selecciona un archivo JSON');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        applyBackupPayload(data);
+        saveState();
+        renderAll();
+        showToast('✅ Datos importados correctamente');
+      } catch (e) {
+        console.error(e);
+        showToast('❌ Error al leer el JSON');
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  });
+}
+
+if (btnImportText && textArea) {
+  btnImportText.addEventListener('click', () => {
+    const content = textArea.value.trim();
+    if (!content) {
+      showToast('⚠️ Pega el contenido del JSON');
+      return;
+    }
+    try {
+      const data = JSON.parse(content);
+      applyBackupPayload(data);
+      saveState();
+      renderAll();
+      showToast('✅ Datos importados correctamente');
+    } catch (e) {
+      console.error(e);
+      showToast('❌ El texto no es un JSON válido');
+    }
+  });
+}
+
+}
+// Acepta backups antiguos y nuevos y los mapea al schema actual de “state”
+function applyBackupPayload(data) {
+if (!data || typeof data !== ‘object’) {
+throw new Error(‘Backup inválido’);
+}
+const newState = {
+  ingresosBase: { juan: 0, saray: 0, otros: 0 },
+  fijos: [],
+  sobres: [],
+  huchas: [],
+  ingresosPuntuales: [],
+  gastos: [],
+  notasPorMes: {}
+};
+
+// 1) Ingresos base: formato nuevo (ingresosBase) o antiguo (baseConfig)
+if (data.ingresosBase && typeof data.ingresosBase === 'object') {
+  newState.ingresosBase = {
+    juan: Number(data.ingresosBase.juan || 0),
+    saray: Number(data.ingresosBase.saray || 0),
+    otros: Number(data.ingresosBase.otros || 0)
+  };
+} else if (data.baseConfig && typeof data.baseConfig === 'object') {
+  newState.ingresosBase = {
+    juan: Number(data.baseConfig.juan || 0),
+    saray: Number(data.baseConfig.saray || 0),
+    otros: Number(data.baseConfig.otros || 0)
+  };
+}
+
+// 2) Gastos fijos: array "fijos" o antiguo "gastosFijos"
+if (Array.isArray(data.fijos)) {
+  newState.fijos = data.fijos.map(f => ({
+    id: String(f.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+    nombre: f.nombre || '',
+    importe: Number(f.importe || 0)
+  }));
+} else if (Array.isArray(data.gastosFijos)) {
+  newState.fijos = data.gastosFijos.map(f => ({
+    id: String(f.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+    nombre: f.nombre || '',
+    importe: Number(f.importe || 0)
+  }));
+}
+
+// 3) Sobres / presupuestos
+if (Array.isArray(data.sobres)) {
+  // Formato nuevo: array de sobres
+  newState.sobres = data.sobres.map(s => ({
+    id: String(s.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+    nombre: s.nombre || '',
+    presupuesto: Number(s.presupuesto || s.importe || 0)
+  }));
+} else if (data.sobres && typeof data.sobres === 'object') {
+  // Formato antiguo: objeto { nombre: importe }
+  newState.sobres = Object.keys(data.sobres).map(nombre => ({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+    nombre,
+    presupuesto: Number(data.sobres[nombre] || 0)
+  }));
+}
+
+// 4) Huchas
+if (Array.isArray(data.huchas)) {
+  newState.huchas = data.huchas.map(h => ({
+    id: String(h.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+    nombre: h.nombre || '',
+    objetivo: Number(h.objetivo || 0),
+    saldo: Number(h.saldo || 0)
+  }));
+}
+
+// 5) Ingresos puntuales
+if (Array.isArray(data.ingresosPuntuales)) {
+  newState.ingresosPuntuales = data.ingresosPuntuales.map(ip => ({
+    id: String(ip.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+    fecha: ip.fecha || '',
+    desc: ip.desc || '',
+    importe: Number(ip.importe || 0)
+  }));
+}
+
+// 6) Gastos
+if (Array.isArray(data.gastos)) {
+  newState.gastos = data.gastos.map(g => ({
+    id: String(g.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+    fecha: g.fecha || '',
+    categoria: g.categoria || 'Otros',
+    desc: g.desc || '',
+    importe: Number(g.importe || 0)
+  }));
+} else if (Array.isArray(data.movimientos)) {
+  newState.gastos = data.movimientos.map(g => ({
+    id: String(g.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+    fecha: g.fecha || '',
+    categoria: g.categoria || 'Otros',
+    desc: g.desc || '',
+    importe: Number(g.importe || 0)
+  }));
+}
+
+// 7) Notas por mes
+if (data.notasPorMes && typeof data.notasPorMes === 'object') {
+  newState.notasPorMes = data.notasPorMes;
+} else if (data.notasByMonth && typeof data.notasByMonth === 'object') {
+  newState.notasPorMes = data.notasByMonth;
+}
+
+state = newState;
+
+}
+// —– Importar CSV —–
+function setupImportCsv() {
+const fileInput = document.getElementById(‘csvFile’);
+const btnImport = document.getElementById(‘btnImportCsv’);
+if (!btnImport || !fileInput) return;
+
+btnImport.addEventListener('click', () => {
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) {
+    showToast('⚠️ Selecciona un archivo CSV');
+    return;
   }
 
-  // ----- Export / Import JSON -----
-  
-  // ----- Export / Import JSON -----
-  function setupExportImportJson() {
-    const btnExport = document.getElementById('btnExportJson');
-    const fileInput = document.getElementById('importFile');
-    const btnImportFile = document.getElementById('btnImportJsonFile');
-    const textArea = document.getElementById('importJsonText');
-    const btnImportText = document.getElementById('btnImportJsonText');
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const text = ev.target.result;
+      const lines = text.split('\n').filter(l => l.trim());
+      let count = 0;
 
-    if (btnExport) {
-      btnExport.addEventListener('click', () => {
-        const dataStr = JSON.stringify(state, null, 2);
-        const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const mk = getCurrentMonthKey();
-        a.href = url;
-        a.download = 'economia_familiar_' + mk + '.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        showToast('✅ Copia de seguridad descargada');
+      lines.forEach((line, idx) => {
+        if (idx === 0) return; // skip header
+        const parts = line.split(';');
+        if (parts.length < 3) return;
+
+        const concepto = parts[0] ? parts[0].trim() : '';
+        const fechaStr = parts[1] ? parts[1].trim() : '';
+        const importeStr = parts[2] ? parts[2].trim().replace(',', '.') : '';
+        const importe = parseFloat(importeStr);
+
+        if (isNaN(importe) || importe >= 0) return; // solo cargos
+
+        const importePos = Math.abs(importe);
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+
+        state.gastos.push({
+          id,
+          fecha: fechaStr || new Date().toISOString().slice(0, 10),
+          categoria: 'Banco',
+          desc: concepto || 'Cargo bancario',
+          importe: importePos
+        });
+        count++;
       });
-    }
 
-    if (btnImportFile && fileInput) {
-      btnImportFile.addEventListener('click', () => {
-        const file = fileInput.files && fileInput.files[0];
-        if (!file) {
-          showToast('⚠️ Selecciona un archivo JSON');
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          try {
-            const data = JSON.parse(ev.target.result);
-            applyBackupPayload(data);
-            saveState();
-            renderAll();
-            showToast('✅ Datos importados correctamente');
-          } catch (e) {
-            console.error(e);
-            showToast('❌ Error al leer el JSON');
-          }
-        };
-        reader.readAsText(file, 'utf-8');
-      });
+      saveState();
+      renderGastosLista();
+      renderSobresLista();
+      updateResumenYChips();
+      showToast(`✅ ${count} cargos importados del CSV`);
+    } catch (e) {
+      console.error(e);
+      showToast('❌ Error al leer el CSV');
     }
+  };
+  reader.readAsText(file, 'utf-8');
+});
 
-    if (btnImportText && textArea) {
-      btnImportText.addEventListener('click', () => {
-        const content = textArea.value.trim();
-        if (!content) {
-          showToast('⚠️ Pega el contenido del JSON');
-          return;
-        }
-        try {
-          const data = JSON.parse(content);
-          applyBackupPayload(data);
-          saveState();
-          renderAll();
-          showToast('✅ Datos importados correctamente');
-        } catch (e) {
-          console.error(e);
-          showToast('❌ El texto no es un JSON válido');
-        }
-      });
-    }
-  }
-
-  // Acepta backups antiguos y nuevos y los mapea al schema actual de "state"
-  function applyBackupPayload(data) {
-    if (!data || typeof data !== 'object') {
-      throw new Error('Backup inválido');
-    }
-
-    const newState = {
+}
+// —– Reset —–
+function setupReset() {
+const btn = document.getElementById(‘btnResetAll’);
+if (!btn) return;
+btn.addEventListener('click', () => {
+  openConfirm('¿Estás seguro de que quieres borrar TODOS los datos? Esta acción no se puede deshacer.', () => {
+    localStorage.removeItem(STORAGE_KEY);
+    state = {
       ingresosBase: { juan: 0, saray: 0, otros: 0 },
       fijos: [],
       sobres: [],
@@ -942,341 +1079,244 @@
       gastos: [],
       notasPorMes: {}
     };
-
-    // 1) Ingresos base: formato nuevo (ingresosBase) o antiguo (baseConfig)
-    if (data.ingresosBase && typeof data.ingresosBase === 'object') {
-      newState.ingresosBase = {
-        juan: Number(data.ingresosBase.juan || 0),
-        saray: Number(data.ingresosBase.saray || 0),
-        otros: Number(data.ingresosBase.otros || 0)
-      };
-    } else if (data.baseConfig && typeof data.baseConfig === 'object') {
-      newState.ingresosBase = {
-        juan: Number(data.baseConfig.juan || 0),
-        saray: Number(data.baseConfig.saray || 0),
-        otros: Number(data.baseConfig.otros || 0)
-      };
-    }
-
-    // 2) Gastos fijos: array "fijos" o antiguo "gastosFijos"
-    if (Array.isArray(data.fijos)) {
-      newState.fijos = data.fijos.map(f => ({
-        id: String(f.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
-        nombre: f.nombre || '',
-        importe: Number(f.importe || 0)
-      }));
-    } else if (Array.isArray(data.gastosFijos)) {
-      newState.fijos = data.gastosFijos.map(f => ({
-        id: String(f.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
-        nombre: f.nombre || '',
-        importe: Number(f.importe || 0)
-      }));
-    }
-
-    // 3) Sobres / presupuestos
-    if (Array.isArray(data.sobres)) {
-      // Formato nuevo: array de sobres
-      newState.sobres = data.sobres.map(s => ({
-        id: String(s.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
-        nombre: s.nombre || '',
-        presupuesto: Number(s.presupuesto || s.importe || 0)
-      }));
-    } else if (data.sobres && typeof data.sobres === 'object') {
-      // Formato antiguo: objeto { nombre: importe }
-      newState.sobres = Object.keys(data.sobres).map(nombre => ({
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2),
-        nombre,
-        presupuesto: Number(data.sobres[nombre] || 0)
-      }));
-    }
-
-    // 4) Huchas
-    if (Array.isArray(data.huchas)) {
-      newState.huchas = data.huchas.map(h => ({
-        id: String(h.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
-        nombre: h.nombre || '',
-        objetivo: Number(h.objetivo || 0),
-        saldo: Number(h.saldo || 0)
-      }));
-    }
-
-    // 5) Ingresos puntuales
-    if (Array.isArray(data.ingresosPuntuales)) {
-      newState.ingresosPuntuales = data.ingresosPuntuales.map(ip => ({
-        id: String(ip.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
-        fecha: ip.fecha || '',
-        desc: ip.desc || '',
-        importe: Number(ip.importe || 0)
-      }));
-    }
-
-    // 6) Gastos
-    if (Array.isArray(data.gastos)) {
-      newState.gastos = data.gastos.map(g => ({
-        id: String(g.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
-        fecha: g.fecha || '',
-        categoria: g.categoria || 'Otros',
-        desc: g.desc || '',
-        importe: Number(g.importe || 0)
-      }));
-    } else if (Array.isArray(data.movimientos)) {
-      newState.gastos = data.movimientos.map(g => ({
-        id: String(g.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
-        fecha: g.fecha || '',
-        categoria: g.categoria || 'Otros',
-        desc: g.desc || '',
-        importe: Number(g.importe || 0)
-      }));
-    }
-
-    // 7) Notas por mes
-    if (data.notasPorMes && typeof data.notasPorMes === 'object') {
-      newState.notasPorMes = data.notasPorMes;
-    } else if (data.notasByMonth && typeof data.notasByMonth === 'object') {
-      newState.notasPorMes = data.notasByMonth;
-    }
-
-    state = newState;
-  }
-
-  // ----- Modal edición
- genérica -----
-  function openEditModal(type, data) {
-    const overlay = document.getElementById('editModal');
-    const titleEl = document.getElementById('modalTitle');
-    const contentEl = document.getElementById('modalContent');
-    const saveBtn = document.getElementById('modalSave');
-    if (!overlay || !titleEl || !contentEl || !saveBtn) return;
-
-    let html = '';
-    if (type === 'fijo') {
-      titleEl.textContent = 'Editar gasto fijo';
-      html = `
-        <div class="field-group">
-          <label>Nombre</label>
-          <input type="text" id="editNombre" value="${data.nombre || ''}" />
-        </div>
-        <div class="field-group">
-          <label>Importe mensual (€)</label>
-          <input type="number" id="editImporte" step="0.01" inputmode="decimal" value="${data.importe}" />
-        </div>
-      `;
-    } else if (type === 'gasto') {
-      titleEl.textContent = 'Editar gasto';
-      html = `
-        <div class="field-group">
-          <label>Fecha</label>
-          <input type="date" id="editFecha" value="${data.fecha || ''}" />
-        </div>
-        <div class="field-group">
-          <label>Categoría</label>
-          <input type="text" id="editCategoria" value="${data.categoria || ''}" />
-        </div>
-        <div class="field-group">
-          <label>Descripción</label>
-          <input type="text" id="editDesc" value="${data.desc || ''}" />
-        </div>
-        <div class="field-group">
-          <label>Importe (€)</label>
-          <input type="number" id="editImporte" step="0.01" inputmode="decimal" value="${data.importe}" />
-        </div>
-      `;
-    } else if (type === 'sobre') {
-      titleEl.textContent = 'Editar presupuesto';
-      html = `
-        <div class="field-group">
-          <label>Nombre del sobre</label>
-          <input type="text" id="editNombre" value="${data.nombre || ''}" />
-        </div>
-        <div class="field-group">
-          <label>Presupuesto mensual (€)</label>
-          <input type="number" id="editImporte" step="0.01" inputmode="decimal" value="${data.presupuesto}" />
-        </div>
-      `;
-    } else if (type === 'hucha') {
-      titleEl.textContent = 'Editar hucha';
-      html = `
-        <div class="field-group">
-          <label>Nombre</label>
-          <input type="text" id="editNombre" value="${data.nombre || ''}" />
-        </div>
-        <div class="field-group">
-          <label>Objetivo (€)</label>
-          <input type="number" id="editObjetivo" step="0.01" inputmode="decimal" value="${data.objetivo || 0}" />
-        </div>
-        <div class="field-group">
-          <label>Saldo actual (€)</label>
-          <input type="number" id="editSaldo" step="0.01" inputmode="decimal" value="${data.saldo || 0}" />
-        </div>
-      `;
-    } else {
-      titleEl.textContent = 'Editar';
-      html = '<p>No hay campos para editar.</p>';
-    }
-
-    contentEl.innerHTML = html;
-    saveBtn.dataset.editType = type;
-    saveBtn.dataset.editId = data.id;
-    overlay.classList.add('active');
-  }
-
-  function closeEditModal() {
-    const overlay = document.getElementById('editModal');
-    const contentEl = document.getElementById('modalContent');
-    const saveBtn = document.getElementById('modalSave');
-    if (overlay) overlay.classList.remove('active');
-    if (contentEl) contentEl.innerHTML = '';
-    if (saveBtn) {
-      saveBtn.dataset.editType = '';
-      saveBtn.dataset.editId = '';
-    }
-  }
-
-  function setupEditModalEvents() {
-    const modalClose = document.getElementById('modalClose');
-    const modalCancel = document.getElementById('modalCancel');
-    const modalSave = document.getElementById('modalSave');
-    const overlay = document.getElementById('editModal');
-
-    if (modalClose) modalClose.addEventListener('click', closeEditModal);
-    if (modalCancel) modalCancel.addEventListener('click', closeEditModal);
-    if (overlay) {
-      overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) closeEditModal();
-      });
-    }
-    if (modalSave) {
-      modalSave.addEventListener('click', () => {
-        const type = modalSave.dataset.editType;
-        const id = modalSave.dataset.editId;
-        if (!type || !id) {
-          closeEditModal();
-          return;
-        }
-        if (type === 'fijo') {
-          const nombreEl = document.getElementById('editNombre');
-          const impEl = document.getElementById('editImporte');
-          const fijo = state.fijos.find(f => String(f.id) === String(id));
-          if (fijo && nombreEl && impEl) {
-            fijo.nombre = nombreEl.value.trim();
-            fijo.importe = Number(impEl.value) || 0;
-            saveState();
-            renderFijosTable();
-            updateResumenYChips();
-            showToast('Gasto fijo actualizado.');
-          }
-        } else if (type === 'gasto') {
-          const fechaEl = document.getElementById('editFecha');
-          const catEl = document.getElementById('editCategoria');
-          const descEl = document.getElementById('editDesc');
-          const impEl = document.getElementById('editImporte');
-          const gasto = state.gastos.find(g => String(g.id) === String(id));
-          if (gasto && fechaEl && catEl && descEl && impEl) {
-            gasto.fecha = fechaEl.value || gasto.fecha;
-            gasto.categoria = catEl.value.trim() || gasto.categoria;
-            gasto.desc = descEl.value.trim();
-            gasto.importe = Number(impEl.value) || 0;
-            saveState();
-            renderGastosLista();
-            renderSobresLista();
-            rebuildCategoriasSugerencias();
-            updateResumenYChips();
-            showToast('Gasto actualizado.');
-          }
-        } else if (type === 'sobre') {
-          const nombreEl = document.getElementById('editNombre');
-          const impEl = document.getElementById('editImporte');
-          const sobre = state.sobres.find(s => String(s.id) === String(id));
-          if (sobre && nombreEl && impEl) {
-            sobre.nombre = nombreEl.value.trim() || sobre.nombre;
-            sobre.presupuesto = Number(impEl.value) || 0;
-            saveState();
-            renderSobresLista();
-            rebuildCategoriasSugerencias();
-            showToast('Presupuesto actualizado.');
-          }
-        } else if (type === 'hucha') {
-          const nombreEl = document.getElementById('editNombre');
-          const objEl = document.getElementById('editObjetivo');
-          const saldoEl = document.getElementById('editSaldo');
-          const hucha = state.huchas.find(h => String(h.id) === String(id));
-          if (hucha && nombreEl && objEl && saldoEl) {
-            hucha.nombre = nombreEl.value.trim() || hucha.nombre;
-            hucha.objetivo = Number(objEl.value) || 0;
-            hucha.saldo = Number(saldoEl.value) || 0;
-            saveState();
-            renderHuchas();
-            updateResumenYChips();
-            showToast('Hucha actualizada.');
-          }
-        }
-        closeEditModal();
-      });
-    }
-  }
-
-  // ----- Eventos modal confirm -----
-  function setupConfirmModalEvents() {
-    const overlay = document.getElementById('confirmModal');
-    const btnOk = document.getElementById('confirmOk');
-    const btnCancel = document.getElementById('confirmCancel');
-    const btnClose = document.getElementById('confirmClose');
-    if (btnOk) {
-      btnOk.addEventListener('click', () => {
-        if (pendingConfirm) pendingConfirm();
-        closeConfirm();
-      });
-    }
-    if (btnCancel) btnCancel.addEventListener('click', closeConfirm);
-    if (btnClose) btnClose.addEventListener('click', closeConfirm);
-    if (overlay) {
-      overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) closeConfirm();
-      });
-    }
-  }
-
-  // ----- Render general -----
-  function renderAll() {
-    setupIngresosBase(); // repinta inputs
-    renderIngresosPuntualesLista();
-    renderFijosTable();
-    renderGastosLista();
-    renderSobresLista();
-    renderHuchas();
-    rebuildCategoriasSugerencias();
-    loadNotasMes();
-    updateResumenYChips();
-  }
-
-  // ----- Init -----
-  document.addEventListener('DOMContentLoaded', () => {
-    loadState();
-
-    const now = new Date();
-    currentYear = now.getFullYear();
-    currentMonth = now.getMonth();
-
-    setupTabs();
-    setupMonthPicker();
-    updateMonthDisplay();
-
-    document.getElementById('btnPrevMonth')?.addEventListener('click', () => changeMonth(-1));
-    document.getElementById('btnNextMonth')?.addEventListener('click', () => changeMonth(1));
-
-    setupIngresosBase();
-    setupIngresosPuntuales();
-    setupFijos();
-    setupGastos();
-    setupSobres();
-    setupHuchas();
-    setupNotas();
-    setupExportImportJson();
-    setupImportCsv();
-    setupReset();
-    setupEditModalEvents();
-    setupConfirmModalEvents();
-
     renderAll();
+    showToast('✅ Todos los datos han sido borrados');
   });
+});
+
+}
+// —– Modal edición genérica —–
+function openEditModal(type, data) {
+const overlay = document.getElementById(‘editModal’);
+const titleEl = document.getElementById(‘modalTitle’);
+const contentEl = document.getElementById(‘modalContent’);
+const saveBtn = document.getElementById(‘modalSave’);
+if (!overlay || !titleEl || !contentEl || !saveBtn) return;
+let html = '';
+if (type === 'fijo') {
+  titleEl.textContent = 'Editar gasto fijo';
+  html = `
+    <div class="field-group">
+      <label>Nombre</label>
+      <input type="text" id="editNombre" value="${data.nombre || ''}" />
+    </div>
+    <div class="field-group">
+      <label>Importe mensual (€)</label>
+      <input type="number" id="editImporte" step="0.01" inputmode="decimal" value="${data.importe}" />
+    </div>
+  `;
+} else if (type === 'gasto') {
+  titleEl.textContent = 'Editar gasto';
+  html = `
+    <div class="field-group">
+      <label>Fecha</label>
+      <input type="date" id="editFecha" value="${data.fecha || ''}" />
+    </div>
+    <div class="field-group">
+      <label>Categoría</label>
+      <input type="text" id="editCategoria" value="${data.categoria || ''}" />
+    </div>
+    <div class="field-group">
+      <label>Descripción</label>
+      <input type="text" id="editDesc" value="${data.desc || ''}" />
+    </div>
+    <div class="field-group">
+      <label>Importe (€)</label>
+      <input type="number" id="editImporte" step="0.01" inputmode="decimal" value="${data.importe}" />
+    </div>
+  `;
+} else if (type === 'sobre') {
+  titleEl.textContent = 'Editar presupuesto';
+  html = `
+    <div class="field-group">
+      <label>Nombre del sobre</label>
+      <input type="text" id="editNombre" value="${data.nombre || ''}" />
+    </div>
+    <div class="field-group">
+      <label>Presupuesto mensual (€)</label>
+      <input type="number" id="editImporte" step="0.01" inputmode="decimal" value="${data.presupuesto}" />
+    </div>
+  `;
+} else if (type === 'hucha') {
+  titleEl.textContent = 'Editar hucha';
+  html = `
+    <div class="field-group">
+      <label>Nombre</label>
+      <input type="text" id="editNombre" value="${data.nombre || ''}" />
+    </div>
+    <div class="field-group">
+      <label>Objetivo (€)</label>
+      <input type="number" id="editObjetivo" step="0.01" inputmode="decimal" value="${data.objetivo || 0}" />
+    </div>
+    <div class="field-group">
+      <label>Saldo actual (€)</label>
+      <input type="number" id="editSaldo" step="0.01" inputmode="decimal" value="${data.saldo || 0}" />
+    </div>
+  `;
+} else {
+  titleEl.textContent = 'Editar';
+  html = '<p>No hay campos para editar.</p>';
+}
+
+contentEl.innerHTML = html;
+saveBtn.dataset.editType = type;
+saveBtn.dataset.editId = data.id;
+overlay.classList.add('active');
+
+}
+function closeEditModal() {
+const overlay = document.getElementById(‘editModal’);
+const contentEl = document.getElementById(‘modalContent’);
+const saveBtn = document.getElementById(‘modalSave’);
+if (overlay) overlay.classList.remove(‘active’);
+if (contentEl) contentEl.innerHTML = ‘’;
+if (saveBtn) {
+saveBtn.dataset.editType = ‘’;
+saveBtn.dataset.editId = ‘’;
+}
+}
+function setupEditModalEvents() {
+const modalClose = document.getElementById(‘modalClose’);
+const modalCancel = document.getElementById(‘modalCancel’);
+const modalSave = document.getElementById(‘modalSave’);
+const overlay = document.getElementById(‘editModal’);
+if (modalClose) modalClose.addEventListener('click', closeEditModal);
+if (modalCancel) modalCancel.addEventListener('click', closeEditModal);
+if (overlay) {
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeEditModal();
+  });
+}
+if (modalSave) {
+  modalSave.addEventListener('click', () => {
+    const type = modalSave.dataset.editType;
+    const id = modalSave.dataset.editId;
+    if (!type || !id) {
+      closeEditModal();
+      return;
+    }
+    if (type === 'fijo') {
+      const nombreEl = document.getElementById('editNombre');
+      const impEl = document.getElementById('editImporte');
+      const fijo = state.fijos.find(f => String(f.id) === String(id));
+      if (fijo && nombreEl && impEl) {
+        fijo.nombre = nombreEl.value.trim();
+        fijo.importe = Number(impEl.value) || 0;
+        saveState();
+        renderFijosTable();
+        updateResumenYChips();
+        showToast('Gasto fijo actualizado.');
+      }
+    } else if (type === 'gasto') {
+      const fechaEl = document.getElementById('editFecha');
+      const catEl = document.getElementById('editCategoria');
+      const descEl = document.getElementById('editDesc');
+      const impEl = document.getElementById('editImporte');
+      const gasto = state.gastos.find(g => String(g.id) === String(id));
+      if (gasto && fechaEl && catEl && descEl && impEl) {
+        gasto.fecha = fechaEl.value || gasto.fecha;
+        gasto.categoria = catEl.value.trim() || gasto.categoria;
+        gasto.desc = descEl.value.trim();
+        gasto.importe = Number(impEl.value) || 0;
+        saveState();
+        renderGastosLista();
+        renderSobresLista();
+        rebuildCategoriasSugerencias();
+        updateResumenYChips();
+        showToast('Gasto actualizado.');
+      }
+    } else if (type === 'sobre') {
+      const nombreEl = document.getElementById('editNombre');
+      const impEl = document.getElementById('editImporte');
+      const sobre = state.sobres.find(s => String(s.id) === String(id));
+      if (sobre && nombreEl && impEl) {
+        sobre.nombre = nombreEl.value.trim() || sobre.nombre;
+        sobre.presupuesto = Number(impEl.value) || 0;
+        saveState();
+        renderSobresLista();
+        rebuildCategoriasSugerencias();
+        showToast('Presupuesto actualizado.');
+      }
+    } else if (type === 'hucha') {
+      const nombreEl = document.getElementById('editNombre');
+      const objEl = document.getElementById('editObjetivo');
+      const saldoEl = document.getElementById('editSaldo');
+      const hucha = state.huchas.find(h => String(h.id) === String(id));
+      if (hucha && nombreEl && objEl && saldoEl) {
+        hucha.nombre = nombreEl.value.trim() || hucha.nombre;
+        hucha.objetivo = Number(objEl.value) || 0;
+        hucha.saldo = Number(saldoEl.value) || 0;
+        saveState();
+        renderHuchas();
+        updateResumenYChips();
+        showToast('Hucha actualizada.');
+      }
+    }
+    closeEditModal();
+  });
+}
+
+}
+// —– Eventos modal confirm —–
+function setupConfirmModalEvents() {
+const overlay = document.getElementById(‘confirmModal’);
+const btnOk = document.getElementById(‘confirmOk’);
+const btnCancel = document.getElementById(‘confirmCancel’);
+const btnClose = document.getElementById(‘confirmClose’);
+if (btnOk) {
+btnOk.addEventListener(‘click’, () => {
+if (pendingConfirm) pendingConfirm();
+closeConfirm();
+});
+}
+if (btnCancel) btnCancel.addEventListener(‘click’, closeConfirm);
+if (btnClose) btnClose.addEventListener(‘click’, closeConfirm);
+if (overlay) {
+overlay.addEventListener(‘click’, (e) => {
+if (e.target === overlay) closeConfirm();
+});
+}
+}
+// —– Render general —–
+function renderAll() {
+setupIngresosBase(); // repinta inputs
+renderIngresosPuntualesLista();
+renderFijosTable();
+renderGastosLista();
+renderSobresLista();
+renderHuchas();
+rebuildCategoriasSugerencias();
+loadNotasMes();
+updateResumenYChips();
+}
+// —– Init —–
+document.addEventListener(‘DOMContentLoaded’, () => {
+loadState();
+const now = new Date();
+currentYear = now.getFullYear();
+currentMonth = now.getMonth();
+
+setupTabs();
+setupMonthPicker();
+updateMonthDisplay();
+
+document.getElementById('btnPrevMonth')?.addEventListener('click', () => changeMonth(-1));
+document.getElementById('btnNextMonth')?.addEventListener('click', () => changeMonth(1));
+
+setupIngresosBase();
+setupIngresosPuntuales();
+setupFijos();
+setupGastos();
+setupSobres();
+setupHuchas();
+setupNotas();
+setupExportImportJson();
+setupImportCsv();
+setupReset();
+setupEditModalEvents();
+setupConfirmModalEvents();
+
+renderAll();
+
+});
 })();
