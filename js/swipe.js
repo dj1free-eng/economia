@@ -8,12 +8,20 @@ let startX = 0;
 let startY = 0;
 let isSwiping = false;
 
-// Índice actual basado en la sección activa
-let currentIndex = tabSections.findIndex(sec => sec.classList.contains('active'));
-if (currentIndex < 0) currentIndex = 0;
+// Función para obtener el índice actual según la pestaña activa en el DOM
+function getCurrentIndexFromDom() {
+  const idx = tabSections.findIndex(sec => sec.classList.contains('active'));
+  return idx >= 0 ? idx : 0;
+}
+
+// Índice actual inicial
+let currentIndex = getCurrentIndexFromDom();
 
 // Aplica cambio de pestaña + animación lateral
 function setActiveTabByIndex(newIndex) {
+  // Re-sincronizar siempre con lo que esté activo realmente
+  currentIndex = getCurrentIndexFromDom();
+
   if (newIndex === currentIndex || newIndex < 0 || newIndex >= tabSections.length) return;
 
   const oldSection = tabSections[currentIndex];
@@ -49,6 +57,18 @@ function setActiveTabByIndex(newIndex) {
   currentIndex = newIndex;
 }
 
+// Sincronizar índice cuando pulsas una pestaña del menú inferior
+tabButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const targetTab = btn.dataset.tabTarget;
+    if (!targetTab) return;
+    const idx = tabSections.findIndex(sec => sec.dataset.tab === targetTab);
+    if (idx >= 0) {
+      currentIndex = idx;
+    }
+  });
+});
+
 if (tabsWrapper) {
   tabsWrapper.addEventListener('touchstart', (e) => {
     if (!e.touches || e.touches.length !== 1) return;
@@ -82,6 +102,9 @@ if (tabsWrapper) {
     const UMBRAL = 50; // píxeles mínimos para considerar el swipe
     if (Math.abs(diff) < UMBRAL) return;
 
+    // Aseguramos que currentIndex está sincronizado con el DOM ANTES de movernos
+    currentIndex = getCurrentIndexFromDom();
+
     if (diff < 0 && currentIndex < tabSections.length - 1) {
       // Swipe hacia la izquierda → siguiente pestaña
       setActiveTabByIndex(currentIndex + 1);
@@ -91,7 +114,7 @@ if (tabsWrapper) {
     }
   }, { passive: true });
 
-  // Prevenir scroll horizontal accidental
+  // Prevenir scroll horizontal accidental cuando realmente se está haciendo swipe
   tabsWrapper.addEventListener('touchmove', (e) => {
     if (isSwiping && e.touches && e.touches.length === 1) {
       const currentX = e.touches[0].clientX;
@@ -99,12 +122,9 @@ if (tabsWrapper) {
       const diffX = Math.abs(currentX - startX);
       const diffY = Math.abs(currentY - startY);
 
-      // Solo prevenir scroll si es claramente horizontal
       if (diffX > diffY && diffX > 10) {
         e.preventDefault();
       }
     }
   }, { passive: false });
 }
-
-// No añadimos listeners a los botones aquí, eso ya lo hace app.js
