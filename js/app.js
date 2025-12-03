@@ -1397,32 +1397,32 @@
     updateResumenYChips();
   }
 
-  // ----------------- Inicio -----------------
-  document.addEventListener('DOMContentLoaded', () => {
-    loadState();
-    updateMonthDisplay();
-    setupMonthPicker();
+// —– Init —–
+document.addEventListener('DOMContentLoaded', () => {
+  loadState();
+  const now = new Date();
+  currentYear = now.getFullYear();
+  currentMonth = now.getMonth();
 
-    const prevBtn = document.getElementById('btnPrevMonth');
-    const nextBtn = document.getElementById('btnNextMonth');
-    if (prevBtn) prevBtn.addEventListener('click', () => changeMonth(-1));
-    if (nextBtn) nextBtn.addEventListener('click', () => changeMonth(1));
+  setupTabs();
+  setupMonthPicker();
+  updateMonthDisplay();
 
-    setupIngresosBase();
-    setupIngresosPuntuales();
-    setupFijos();
-    setupGastos();
-    setupSobres();
-    setupHuchas();
-    setupNotas();
-    setupExportImportJson();
-    setupImportCsv();
-    setupReset();
-    setupEditModalEvents();
-    setupConfirmModalEvents();
-    setupSwipe();
+  document.getElementById('btnPrevMonth')?.addEventListener('click', () => changeMonth(-1));
+  document.getElementById('btnNextMonth')?.addEventListener('click', () => changeMonth(1));
 
-    rebuildCategoriasSugerencias();
-    renderAll();
-  });
-})();
+  setupIngresosBase();
+  setupIngresosPuntuales();
+  setupFijos();
+  setupGastos();
+  setupSobres();
+  setupHuchas();
+  setupNotas();
+  setupExportImportJson();
+  setupImportCsv();
+  setupReset();
+  setupEditModalEvents();
+  setupConfirmModalEvents();
+
+  renderAll();
+});
