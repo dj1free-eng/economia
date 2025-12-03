@@ -825,12 +825,12 @@
       btn.addEventListener('click', () => {
         const id = btn.dataset.id;
         openConfirm('¿Eliminar este sobre/presupuesto?', () => {
-          state.sobres = state.sobres.filter(s => String(s.id) !== String(id));
-          saveState();
-          renderSobresLista();
-          rebuildCategoriasSugerencias();
-          showToast('Presupuesto eliminado.');
-        });
+  state.sobres = state.sobres.filter(s => String(s.id) !== String(id));
+  saveState();
+  renderSobresLista();
+  rebuildCategoriasSugerencias();
+  showToast('Presupuesto eliminado.');
+});
       });
     });
 
