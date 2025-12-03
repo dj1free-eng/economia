@@ -7,23 +7,44 @@ const tabButtons = Array.from(document.querySelectorAll('.tab-btn'));
 let startX = 0;
 let startY = 0;
 let isSwiping = false;
+
+// Índice actual basado en la sección activa
 let currentIndex = tabSections.findIndex(sec => sec.classList.contains('active'));
 if (currentIndex < 0) currentIndex = 0;
 
-function setActiveTab(newIndex) {
+// Aplica cambio de pestaña + animación lateral
+function setActiveTabByIndex(newIndex) {
   if (newIndex === currentIndex || newIndex < 0 || newIndex >= tabSections.length) return;
 
-  // Actualizar botones
-  tabButtons[currentIndex].classList.remove('active');
-  tabButtons[newIndex].classList.add('active');
+  const oldSection = tabSections[currentIndex];
+  const newSection = tabSections[newIndex];
 
-  // Actualizar secciones
-  tabSections.forEach((sec, idx) => {
-    sec.classList.remove('active');
-    if (idx === newIndex) {
-      sec.classList.add('active');
+  const direction = newIndex > currentIndex ? 'right' : 'left';
+
+  // Sincronizar con el sistema de pestañas principal (app.js)
+  if (newSection && newSection.dataset && window.activateTab) {
+    const targetTab = newSection.dataset.tab;
+    if (targetTab) {
+      window.activateTab(targetTab);
     }
+  }
+
+  // El DOM ya tiene la nueva sección marcada como .active por activateTab
+  // → solo añadimos la animación adecuada.
+  tabSections.forEach(sec => {
+    sec.classList.remove('slide-in-from-right', 'slide-in-from-left');
   });
+
+  if (direction === 'right') {
+    newSection.classList.add('slide-in-from-right');
+  } else {
+    newSection.classList.add('slide-in-from-left');
+  }
+
+  // Limpiar la clase de animación al terminar
+  newSection.addEventListener('animationend', () => {
+    newSection.classList.remove('slide-in-from-right', 'slide-in-from-left');
+  }, { once: true });
 
   currentIndex = newIndex;
 }
@@ -38,12 +59,12 @@ if (tabsWrapper) {
 
   tabsWrapper.addEventListener('touchmove', (e) => {
     if (!isSwiping || !e.touches || e.touches.length !== 1) return;
-    
+
     const currentX = e.touches[0].clientX;
     const currentY = e.touches[0].clientY;
     const diffX = Math.abs(currentX - startX);
     const diffY = Math.abs(currentY - startY);
-    
+
     // Si el movimiento es más vertical que horizontal, cancelar el swipe
     if (diffY > diffX) {
       isSwiping = false;
@@ -53,7 +74,7 @@ if (tabsWrapper) {
   tabsWrapper.addEventListener('touchend', (e) => {
     if (!isSwiping) return;
     isSwiping = false;
-    
+
     if (!e.changedTouches || !e.changedTouches.length) return;
     const endX = e.changedTouches[0].clientX;
     const diff = endX - startX;
@@ -63,10 +84,10 @@ if (tabsWrapper) {
 
     if (diff < 0 && currentIndex < tabSections.length - 1) {
       // Swipe hacia la izquierda → siguiente pestaña
-      setActiveTab(currentIndex + 1);
+      setActiveTabByIndex(currentIndex + 1);
     } else if (diff > 0 && currentIndex > 0) {
       // Swipe hacia la derecha → pestaña anterior
-      setActiveTab(currentIndex - 1);
+      setActiveTabByIndex(currentIndex - 1);
     }
   }, { passive: true });
 
@@ -77,7 +98,7 @@ if (tabsWrapper) {
       const currentY = e.touches[0].clientY;
       const diffX = Math.abs(currentX - startX);
       const diffY = Math.abs(currentY - startY);
-      
+
       // Solo prevenir scroll si es claramente horizontal
       if (diffX > diffY && diffX > 10) {
         e.preventDefault();
@@ -86,9 +107,4 @@ if (tabsWrapper) {
   }, { passive: false });
 }
 
-// Sincroniza con los botones inferiores
-tabButtons.forEach((btn, idx) => {
-  btn.addEventListener('click', () => {
-    setActiveTab(idx);
-  });
-});
+// No añadimos listeners a los botones aquí, eso ya lo hace app.js
