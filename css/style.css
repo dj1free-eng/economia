@@ -962,3 +962,65 @@ main {
 .tab-section.slide-out-to-right {
   transform: translateX(100%);
 }
+/* Modal Informes */
+.informes-card {
+  max-width: 90%;
+  width: 380px;
+  background: #fff;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+  text-align: left;
+}
+
+.informes-card h2 {
+  margin-bottom: 15px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+/* Contenido de informes */
+.informes-contenido {
+  margin-bottom: 20px;
+  max-height: 65vh;
+  overflow-y: auto;
+}
+
+/* Bloque por categoría */
+.cat-block {
+  margin-bottom: 18px;
+}
+
+.cat-block h3 {
+  margin-bottom: 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* Barra horizontal */
+.bar-container {
+  background: #e5e7eb;
+  height: 10px;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.bar {
+  height: 100%;
+  background: var(--primary);
+  width: 0;
+  transition: width 0.4s ease-out;
+}
+
+.cat-total {
+  font-size: 14px;
+  margin-bottom: 10px;
+  color: var(--text);
+}
+
+.elem-list {
+  padding-left: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
