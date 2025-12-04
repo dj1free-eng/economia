@@ -1256,6 +1256,8 @@ console.log(">>> DOMContentLoaded DISPARADO <<<");
     currentYear = now.getFullYear();
     currentMonth = now.getMonth();
 
+    console.log("Año actual:", currentYear, "Mes actual:", currentMonth);
+    console.log(">>> Ejecutando setup inicial <<<");
     setupTabs();
     setupMonthPicker();
     updateMonthDisplay();
