@@ -201,14 +201,49 @@ function activateTab(tab, animateDirection) {
   const sections = Array.from(document.querySelectorAll('.tab-section'));
   const btns = Array.from(document.querySelectorAll('.tab-btn'));
 
-  sections.forEach(sec => {
-    const isActive = sec.dataset.tab === tab;
-    sec.classList.toggle('active', isActive);
-  });
+  const current = document.querySelector('.tab-section.active');
+  const next = sections.find(sec => sec.dataset.tab === tab);
+  if (!next || next === current) return;
 
+  // Actualizar estado de los botones inferiores
   btns.forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tabTarget === tab);
   });
+
+  // Limpiar restos de animación
+  sections.forEach(sec => sec.classList.remove('off-left'));
+
+  // Si no hay dirección (click normal) → animación básica de siempre
+  if (!animateDirection || !current) {
+    if (current) current.classList.remove('active');
+    next.classList.add('active');
+    return;
+  }
+
+  if (animateDirection === 'right') {
+    // Swipe hacia la derecha → vamos a la pestaña anterior
+    // Queremos que la nueva entre desde la izquierda
+
+    // Colocamos la nueva pestaña a -100% a la izquierda
+    next.classList.add('off-left');
+    next.classList.add('active'); // activa (opacity 1, pero sigue a -100%)
+
+    // Forzamos reflow para que el navegador “registre” la posición inicial
+    // antes de quitar off-left
+    void next.offsetWidth;
+
+    // Quitamos off-left → pasa de -100% a 0 con la transición
+    next.classList.remove('off-left');
+
+    // La actual pierde active → de 0 pasa a 100% (sale a la derecha)
+    current.classList.remove('active');
+
+  } else if (animateDirection === 'left') {
+    // Swipe hacia la izquierda → vamos a la pestaña siguiente
+    // Comportamiento normal: nueva desde la derecha (100% → 0)
+    if (current) current.classList.remove('active');
+    next.classList.add('active');
+  }
 }
 
 window.activateTab = activateTab;
