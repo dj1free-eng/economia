@@ -1012,13 +1012,17 @@ function setupFijos() {
     }
 
     // 2) Gastos fijos: array "fijos" o antiguo "gastosFijos"
-    if (Array.isArray(data.fijos)) {
-      newState.fijos = data.fijos.map(f => ({
-        id: String(f.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
-        nombre: f.nombre || '',
-        importe: Number(f.importe || 0)
-      }));
-    } else if (Array.isArray(data.gastosFijos)) {
+   if (Array.isArray(data.fijos)) {
+  newState.fijos = data.fijos.map(f => ({
+    id: f.id,
+    nombre: f.nombre,
+    // 👉 recuperamos la categoría si existe en el JSON
+    categoria: (typeof f.categoria === 'string' && f.categoria.trim() !== '')
+      ? f.categoria
+      : 'Varios',
+    importe: Number(f.importe) || 0
+  }));
+} else if (Array.isArray(data.gastosFijos)) {
       newState.fijos = data.gastosFijos.map(f => ({
         id: String(f.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
         nombre: f.nombre || '',
