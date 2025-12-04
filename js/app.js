@@ -40,7 +40,12 @@ log(">>> app.js INICIADO <<<");
     gastos: [],             // {id, fecha, categoria, desc, importe}
     notasPorMes: {}         // { 'YYYY-MM': 'texto' }
   };
+  
+function syncDebugState() {
   window.__ecoState = state;
+// primera sincronización
+syncDebugState();
+}
   const monthNames = [
     'Enero','Febrero','Marzo','Abril','Mayo','Junio',
     'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'
@@ -68,7 +73,9 @@ log(">>> app.js INICIADO <<<");
       }
     } catch (e) {
       console.error('Error leyendo estado', e);
-    }
+    }  
+  // 👉 sincronizamos debug después de tener el estado listo
+  syncDebugState();
   }
 
   function monthKey(year, month) {
@@ -1083,40 +1090,43 @@ function setupFijos() {
       }));
     }
 
-    // 7) Notas por mes
-    if (data.notasPorMes && typeof data.notasPorMes === 'object') {
-      newState.notasPorMes = data.notasPorMes;
-    } else if (data.notasByMonth && typeof data.notasByMonth === 'object') {
-      newState.notasPorMes = data.notasByMonth;
-    }
+ // 7) Notas por mes
+if (data.notasPorMes && typeof data.notasPorMes === 'object') {
+  newState.notasPorMes = data.notasPorMes;
+} else if (data.notasByMonth && typeof data.notasByMonth === 'object') {
+  newState.notasPorMes = data.notasByMonth;
+}
 
-    state = newState;
-  }
-    // ----- Reset total -----
-  function setupReset() {
-    const btn = document.getElementById('btnResetAll');
-    if (!btn) return;
+state = newState;
+syncDebugState();     // 👈 AÑADIDO AQUÍ
 
-    btn.addEventListener('click', () => {
-      openConfirm(
-        'Se borrarán todos los datos de la app en este dispositivo. ¿Seguro?',
-        () => {
-          state = {
-            ingresosBase: { juan: 0, saray: 0, otros: 0 },
-            fijos: [],
-            sobres: [],
-            huchas: [],
-            ingresosPuntuales: [],
-            gastos: [],
-            notasPorMes: {}
-          };
-          saveState();
-          renderAll();
-          showToast('Datos eliminados. Empezamos de cero.');
-        }
-      );
-    });
-  }
+}
+// ----- Reset total -----
+function setupReset() {
+  const btn = document.getElementById('btnResetAll');
+  if (!btn) return;
+
+  btn.addEventListener('click', () => {
+    openConfirm(
+      'Se borrarán todos los datos de la app en este dispositivo. ¿Seguro?',
+      () => {
+        state = {
+          ingresosBase: { juan: 0, saray: 0, otros: 0 },
+          fijos: [],
+          sobres: [],
+          huchas: [],
+          ingresosPuntuales: [],
+          gastos: [],
+          notasPorMes: {}
+        };
+        syncDebugState();   // 👈 TAMBIÉN AQUÍ
+        saveState();
+        renderAll();
+        showToast('Datos eliminados. Empezamos de cero.');
+      }
+    );
+  });
+}
 // genérica -----
   function openEditModal(type, data) {
     const overlay = document.getElementById('editModal');
