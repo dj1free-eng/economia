@@ -584,6 +584,12 @@ main {
   overflow-y: auto; 
   width: 100%;
 }
+/* Sobres y huchas: que las tarjetas se vean completas */
+#sobresLista,
+#huchasLista {
+  max-height: none;
+  overflow: visible;
+}
 .pill-item {
   display: flex; 
   justify-content: space-between; 
