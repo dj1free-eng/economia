@@ -1137,8 +1137,72 @@
 
     sync();
   }
+  // Normaliza el JSON importado para que tenga siempre el mismo esquema interno
+  function normalizeImportedState(raw) {
+    if (!raw || typeof raw !== 'object') return null;
 
-  // ---- Export / Import JSON (CORREGIDO) ----
+    const isLegacy =
+      raw.baseConfig ||
+      raw.gastosFijos ||
+      raw.notasByMonth ||
+      (raw.sobres && !Array.isArray(raw.sobres));
+
+    const makeId = () =>
+      crypto.randomUUID?.() ||
+      (Date.now().toString(36) + Math.random().toString(36).slice(2));
+
+    if (isLegacy) {
+      // FORMATO ANTIGUO (v7)
+      const baseConfig = raw.baseConfig || {};
+      const legacyFijos = raw.gastosFijos || [];
+
+      // sobres venían como objeto { nombre: presupuesto }
+      let sobresArr = [];
+      if (Array.isArray(raw.sobres)) {
+        sobresArr = raw.sobres;
+      } else if (raw.sobres && typeof raw.sobres === 'object') {
+        sobresArr = Object.entries(raw.sobres).map(([nombre, presupuesto]) => ({
+          id: makeId(),
+          nombre,
+          presupuesto: Number(presupuesto) || 0
+        }));
+      }
+
+      const fijosArr = legacyFijos.map(f => ({
+        id: f.id || makeId(),
+        nombre: f.nombre || '',
+        importe: Number(f.importe) || 0,
+        categoria: f.categoria || 'Varios',
+        endMonth: f.endMonth || null
+      }));
+
+      return {
+        ingresosBase: {
+          juan: Number(baseConfig.juan) || 0,
+          saray: Number(baseConfig.saray) || 0,
+          otros: Number(baseConfig.otros) || 0
+        },
+        fijos: fijosArr,
+        sobres: sobresArr,
+        huchas: raw.huchas || [],
+        ingresosPuntuales: raw.ingresosPuntuales || [],
+        gastos: raw.gastos || [],
+        notasPorMes: raw.notasPorMes || raw.notasByMonth || {}
+      };
+    }
+
+    // FORMATO NUEVO (v2+)
+    return {
+      ingresosBase: raw.ingresosBase || state.ingresosBase,
+      fijos: raw.fijos || [],
+      sobres: raw.sobres || [],
+      huchas: raw.huchas || [],
+      ingresosPuntuales: raw.ingresosPuntuales || [],
+      gastos: raw.gastos || [],
+      notasPorMes: raw.notasPorMes || {}
+    };
+  }
+  // ---- Export / Import JSON (soporta formato antiguo y nuevo) ----
   function setupJSONImportExport() {
     const btnExp = document.getElementById('btnExportJSON');
     const inputImport = document.getElementById('inputImportJSON');
@@ -1164,8 +1228,9 @@
       const reader = new FileReader();
       reader.onload = () => {
         try {
-          const imported = JSON.parse(reader.result);
-          if (!imported || typeof imported !== 'object') {
+          const raw = JSON.parse(reader.result);
+          const imported = normalizeImportedState(raw);
+          if (!imported) {
             showToast('El archivo no tiene un formato válido.');
             return;
           }
