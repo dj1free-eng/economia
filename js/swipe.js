@@ -75,11 +75,10 @@
       }
 
       const nextTab = order[idx];
-      if (nextTab && typeof window.activateTab === "function") {
-        // Si quieres animación según dirección:
-        // window.activateTab(nextTab, dx < 0 ? "left" : "right");
-        window.activateTab(nextTab);
-      }
+if (nextTab && typeof window.activateTab === "function") {
+  const direction = dx < 0 ? "left" : "right"; // swipe hacia la izquierda → vamos a la derecha, etc.
+  window.activateTab(nextTab, direction);
+}
     },
     { passive: true }
   );
