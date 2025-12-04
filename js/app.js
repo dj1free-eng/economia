@@ -18,6 +18,8 @@ window.log = log;
 
 // Activar / desactivar consola
 document.addEventListener("DOMContentLoaded", () => {
+  
+  
   const toggle = document.getElementById("consoleToggle");
   const panel = document.getElementById("internalConsole");
 
@@ -289,7 +291,57 @@ function setupTabs() {
     if (resVarMes) resVarMes.textContent = formatCurrency(totalGastosVar);
     if (resBalMes) resBalMes.textContent = formatCurrency(balance);
   }
+// ----- Informe de Gastos Fijos -----
+function generarInformeFijos() {
+  const overlay = document.getElementById("modalInformes");
+  const cont = document.getElementById("informesContenido");
+  if (!overlay || !cont) return;
 
+  const categorias = ["Suministros", "Préstamos", "Suscripciones", "Varios"];
+
+  // Agrupar totales por categoría
+  const resumen = {};
+  categorias.forEach(cat => resumen[cat] = { total: 0, items: [] });
+
+  state.fijos.forEach(f => {
+    const cat = f.categoria || "Varios";
+    if (!resumen[cat]) resumen[cat] = { total: 0, items: [] };
+    resumen[cat].total += f.importe;
+    resumen[cat].items.push(f);
+  });
+
+  const totalGlobal = Object.values(resumen).reduce((a, b) => a + b.total, 0);
+  let html = "";
+
+  categorias.forEach(cat => {
+    const { total, items } = resumen[cat];
+    if (total === 0) return;
+
+    const pct = totalGlobal > 0 ? (total / totalGlobal) * 100 : 0;
+
+    html += `
+      <div class="cat-block">
+        <h3>${cat}</h3>
+        <div class="bar-container">
+          <div class="bar" style="width:${pct}%"></div>
+        </div>
+        <div class="cat-total">Total: ${formatCurrency(total)}</div>
+        <div class="elem-list">
+          ${items.map(i => `• ${i.nombre}: ${formatCurrency(i.importe)}`).join("<br>")}
+        </div>
+      </div>
+    `;
+  });
+
+  html += `
+    <div style="margin-top:15px; font-weight:600;">
+      TOTAL GENERAL: ${formatCurrency(totalGlobal)}
+    </div>
+  `;
+
+  cont.innerHTML = html;
+  overlay.classList.add("active");
+}
   // ----- Ingresos base -----
   function setupIngresosBase() {
     const ingJuan = document.getElementById('ingJuan');
@@ -400,7 +452,7 @@ function setupTabs() {
     const list = state.fijos || [];
     const total = getTotalFijos();
     if (totalEl) totalEl.textContent = formatCurrency(total);
-
+<button id="btnInformeFijos" class="btn btn-primary">Ver Informe</button>
     if (!list.length) {
       cont.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🏠</div>No hay gastos fijos configurados.</div>';
       return;
@@ -1379,7 +1431,7 @@ if (type === 'fijo') {
 
   // ----- Init -----
   document.addEventListener('DOMContentLoaded', () => {
-
+    
     log(">>> DOMContentLoaded DISPARADO <<<");  
     loadState();
 
@@ -1411,5 +1463,14 @@ if (type === 'fijo') {
 
     renderAll();
     log(">>> renderAll() ejecutado <<<");
+    // Botón informes fijos
+const btnInf = document.getElementById("btnInformeFijos");
+if (btnInf) btnInf.addEventListener("click", generarInformeFijos);
+
+// Botón cerrar informe
+const btnCloseInf = document.getElementById("btnCerrarInformes");
+if (btnCloseInf) btnCloseInf.addEventListener("click", () => {
+  document.getElementById("modalInformes").classList.remove("active");
+});
   });
 })();
