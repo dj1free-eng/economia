@@ -1249,6 +1249,7 @@ console.log(">>> app.js INICIADO <<<");
 
   // ----- Init -----
   document.addEventListener('DOMContentLoaded', () => {
+console.log(">>> DOMContentLoaded DISPARADO <<<");  
     loadState();
 
     const now = new Date();
