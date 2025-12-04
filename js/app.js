@@ -444,56 +444,58 @@ function generarInformeFijos() {
     }
   }
 
-  // ----- Gastos fijos -----
-  function renderFijosTable() {
-    const cont = document.getElementById('fijosTableContainer');
-    const totalEl = document.getElementById('totalFijosDisplay');
-    if (!cont) return;
-    const list = state.fijos || [];
-    const total = getTotalFijos();
-    if (totalEl) totalEl.textContent = formatCurrency(total);
-<button id="btnInformeFijos" class="btn btn-primary">Ver Informe</button>
-    if (!list.length) {
-      cont.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🏠</div>No hay gastos fijos configurados.</div>';
-      return;
-    }
-let html = '<table class="fixed-expense-table"><thead><tr><th>Gasto</th><th>Categoría</th><th>Importe mensual</th><th></th></tr></thead><tbody>';
-list.forEach(f => {
-  html += `<tr data-id="${f.id}">
-    <td>${f.nombre || ''}</td>
-    <td>${f.categoria || 'Varios'}</td>
-    <td>${formatCurrency(f.importe)}</td>
-    <td style="text-align:right;">
-      <button class="btn btn-edit" data-action="edit" data-id="${f.id}">✏</button>
-      <button class="btn btn-danger-chip" data-action="del" data-id="${f.id}">🗑</button>
-    </td>
-  </tr>`;
-});
-    html += '</tbody></table>';
-    cont.innerHTML = html;
+// ----- Gastos fijos -----
+function renderFijosTable() {
+  const cont = document.getElementById('fijosTableContainer');
+  const totalEl = document.getElementById('totalFijosDisplay');
+  if (!cont) return;
 
-    cont.querySelectorAll('button[data-action="del"]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.id;
-        openConfirm('¿Eliminar este gasto fijo?', () => {
-          state.fijos = state.fijos.filter(f => String(f.id) !== String(id));
-          saveState();
-          renderFijosTable();
-          updateResumenYChips();
-          showToast('Gasto fijo eliminado.');
-        });
-      });
-    });
+  const list = state.fijos || [];
+  const total = getTotalFijos();
+  if (totalEl) totalEl.textContent = formatCurrency(total);
 
-    cont.querySelectorAll('button[data-action="edit"]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.id;
-        const fijo = state.fijos.find(f => String(f.id) === String(id));
-        if (!fijo) return;
-        openEditModal('fijo', fijo);
-      });
-    });
+  if (!list.length) {
+    cont.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🏠</div>No hay gastos fijos configurados.</div>';
+    return;
   }
+
+  let html = '<table class="fixed-expense-table"><thead><tr><th>Gasto</th><th>Categoría</th><th>Importe mensual</th><th></th></tr></thead><tbody>';
+  list.forEach(f => {
+    html += `<tr data-id="${f.id}">
+      <td>${f.nombre || ''}</td>
+      <td>${f.categoria || 'Varios'}</td>
+      <td>${formatCurrency(f.importe)}</td>
+      <td style="text-align:right;">
+        <button class="btn btn-edit" data-action="edit" data-id="${f.id}">✏</button>
+        <button class="btn btn-danger-chip" data-action="del" data-id="${f.id}">🗑</button>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  cont.innerHTML = html;
+
+  cont.querySelectorAll('button[data-action="del"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      openConfirm('¿Eliminar este gasto fijo?', () => {
+        state.fijos = state.fijos.filter(f => String(f.id) !== String(id));
+        saveState();
+        renderFijosTable();
+        updateResumenYChips();
+        showToast('Gasto fijo eliminado.');
+      });
+    });
+  });
+
+  cont.querySelectorAll('button[data-action="edit"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const fijo = state.fijos.find(f => String(f.id) === String(id));
+      if (!fijo) return;
+      openEditModal('fijo', fijo);
+    });
+  });
+}
 
 function setupFijos() {
   const nombreEl = document.getElementById('fijoNombre');
