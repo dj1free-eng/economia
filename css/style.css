@@ -936,8 +936,9 @@ main {
   opacity: 1;
   transform: translateX(0);
 }
-
-.tab-section.slide-in-from-right {
+.tab-section.off-left {
+  transform: translateX(-100%);
+}.tab-section.slide-in-from-right {
   transform: translateX(0);
 }
 
