@@ -224,6 +224,24 @@ header {
   color: #ffffff;
   border-color: #4f46e5;
 }
+/* Estado seleccionado para chips de categoría */
+.chip.chip-small {
+  transition: all 0.15s ease-in-out;
+  border: 2px solid #ddd;
+  background: #f5f5f5;
+}
+
+.chip.chip-small.chip-selected {
+  background: #4f46e5; /* Morado suave */
+  color: #ffffff;
+  border-color: #312e81; /* Morado más oscuro */
+  box-shadow: 0 0 6px rgba(79, 70, 229, 0.6);
+  transform: scale(1.05);
+}
+.chip.chip-small:active {
+  transform: scale(0.92);
+  opacity: 0.9;
+}
 .chips-row { 
   display: flex;
   flex-wrap: nowrap;
