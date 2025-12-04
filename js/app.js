@@ -194,14 +194,13 @@ log(">>> app.js INICIADO <<<");
     });
   }
 
-// ----- Tabs (botones inferiores) con animación -----
+// ----- Tabs (botones inferiores) -----
 function activateTab(tab, animateDirection) {
   const sections = Array.from(document.querySelectorAll('.tab-section'));
   const btns = Array.from(document.querySelectorAll('.tab-btn'));
 
   const current = document.querySelector('.tab-section.active');
-  const next    = sections.find(sec => sec.dataset.tab === tab);
-
+  const next = sections.find(sec => sec.dataset.tab === tab);
   if (!next || next === current) return;
 
   // Actualizar estado de los botones inferiores
@@ -209,44 +208,56 @@ function activateTab(tab, animateDirection) {
     btn.classList.toggle('active', btn.dataset.tabTarget === tab);
   });
 
-  // Clases de animación que vamos a usar
+  // Limpiar clases de animación antiguas
   const animClasses = [
-    'slide-in-left','slide-in-right',
-    'slide-out-left','slide-out-right'
+    'slide-in-from-right',
+    'slide-out-to-left',
+    'slide-in-from-left',
+    'slide-out-to-right',
+    'off-left'
   ];
   sections.forEach(sec => sec.classList.remove(...animClasses));
 
-  // Si no hay dirección (por ejemplo, clic en botón) → cambio simple
+  // Si no hay dirección (click en botones) → cambio simple
   if (!animateDirection || !current) {
     if (current) current.classList.remove('active');
     next.classList.add('active');
     return;
   }
 
-  // Elegir animaciones según dirección del swipe
-  const outClass = animateDirection === 'left'  ? 'slide-out-left'  : 'slide-out-right';
-  const inClass  = animateDirection === 'left'  ? 'slide-in-right'  : 'slide-in-left';
+  if (animateDirection === 'left') {
+    // Swipe hacia la izquierda → vamos a la pestaña de la derecha
+    // Actual sale hacia la izquierda, nueva entra desde la derecha (estado por defecto: 100%)
+    current.classList.add('slide-out-to-left');
 
-  // Animar la pestaña actual hacia fuera
-  current.classList.add(outClass);
+    // Activamos la nueva
+    next.classList.add('active', 'slide-in-from-right');
 
-  current.addEventListener('animationend', function handleOut() {
-    current.classList.remove('active');
-    current.classList.remove(outClass);
-    current.removeEventListener('animationend', handleOut);
-  });
+    // Al terminar la transición, limpiamos clases de animación
+    setTimeout(() => {
+      current.classList.remove('slide-out-to-left', 'active');
+      next.classList.remove('slide-in-from-right');
+      next.classList.add('active');
+    }, 260); // un pelín más que 0.25s
+  } else if (animateDirection === 'right') {
+    // Swipe hacia la derecha → vamos a la pestaña de la izquierda
+    // Actual sale hacia la derecha
+    current.classList.add('slide-out-to-right');
 
-  // Activar y animar la nueva pestaña hacia dentro
-  next.classList.add('active', inClass);
+    // Nueva empieza escondida a la izquierda
+    next.classList.add('off-left');
+    // Activamos y animamos desde la izquierda
+    next.classList.add('active', 'slide-in-from-left');
 
-  next.addEventListener('animationend', function handleIn() {
-    next.classList.remove(inClass);
-    next.removeEventListener('animationend', handleIn);
-  });
+    setTimeout(() => {
+      current.classList.remove('slide-out-to-right', 'active');
+      next.classList.remove('slide-in-from-left', 'off-left');
+      next.classList.add('active');
+    }, 260);
+  }
 }
 
 window.activateTab = activateTab;
-
   function setupTabs() {
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
