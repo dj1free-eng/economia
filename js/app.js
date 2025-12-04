@@ -1,17 +1,11 @@
-// js/app.js
 (() => {
   'use strict';
 
-  const STORAGE_KEY = 'ecoApp_v2_state';
-
-  const monthNames = [
-    'Enero','Febrero','Marzo','Abril','Mayo','Junio',
-    'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'
-  ];
+  const STORAGE_KEY = 'ecoApp_v11e_state';
 
   let state = {
     ingresosBase: { juan: 0, saray: 0, otros: 0 },
-    fijos: [],              // {id, nombre, importe, categoria, endMonth? "YYYY-MM"}
+    fijos: [],              // {id, nombre, importe, endMonth?}
     sobres: [],             // {id, nombre, presupuesto}
     huchas: [],             // {id, nombre, objetivo, saldo}
     ingresosPuntuales: [],  // {id, fecha, desc, importe}
@@ -19,1395 +13,1515 @@
     notasPorMes: {}         // { 'YYYY-MM': 'texto' }
   };
 
-  let currentYM = getYM(new Date());
-  let fixedFilter = 'Todos';
-  let fixedSelectedCategory = 'Suministros';
+  const monthNames = [
+    'Enero','Febrero','Marzo','Abril','Mayo','Junio',
+    'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'
+  ];
 
-  // Modal edición
-  let editContext = null;
-  // Modal confirmación
-  let confirmCallback = null;
-  // Chart informe fijos
-  let fixedChart = null;
+  let currentYear;
+  let currentMonth; // 0–11
 
-  function getYM(date) {
-    const y = date.getFullYear();
-    const m = (date.getMonth() + 1).toString().padStart(2,'0');
-    return `${y}-${m}`;
-  }
-
-  function parseYM(ym) {
-    const [y, m] = ym.split('-').map(Number);
-    return { year: y, month: m };
-  }
-
-  function formatMoney(n) {
-    if (isNaN(n)) n = 0;
-    return n.toLocaleString('es-ES', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }) + ' €';
-  }
-
-  function showToast(msg) {
-    const toast = document.getElementById('toast');
-    if (!toast) return;
-    toast.textContent = msg;
-    toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 2200);
-  }
-
-  // ---- Estado / storage ----
-  function loadState() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const data = JSON.parse(raw);
-
-      state = Object.assign(state, data || {});
-
-      // migración de fijos sin categoría (anteriores versiones)
-      if (Array.isArray(state.fijos)) {
-        state.fijos = state.fijos.map(f => ({
-          ...f,
-          categoria: f.categoria || 'Varios'
-        }));
-      }
-    } catch (err) {
-      console.error('Error al cargar estado:', err);
-    }
-  }
-
+  // ----- Helpers básicos -----
   function saveState() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (err) {
-      console.error('Error al guardar estado:', err);
+    } catch (e) {
+      console.error('Error guardando estado', e);
+      showToast('No se pudo guardar en este dispositivo.');
     }
   }
 
-  // ---- Modales ----
-  function openConfirm(message, onConfirm) {
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          state = Object.assign(state, parsed);
+        }
+      }
+    } catch (e) {
+      console.error('Error leyendo estado', e);
+    }
+  }
+
+  function monthKey(year, month) {
+    return year + '-' + String(month + 1).padStart(2, '0');
+  }
+
+  function parseDateToYm(dateStr) {
+    if (!dateStr) return null;
+    const d = new Date(dateStr + 'T00:00:00');
+    if (isNaN(d)) return null;
+    return { y: d.getFullYear(), m: d.getMonth() };
+  }
+
+  function getCurrentMonthKey() {
+    return monthKey(currentYear, currentMonth);
+  }
+
+  function formatMonthKey(mk) {
+    if (!mk) return '';
+    const [y, m] = mk.split('-');
+    const idx = Number(m) - 1;
+    if (idx >= 0 && idx < 12) {
+      return monthNames[idx] + ' ' + y;
+    }
+    return mk;
+  }
+
+  function formatCurrency(value) {
+    const v = Number(value) || 0;
+    return v.toLocaleString('es-ES', {
+      style: 'currency',
+      currency: 'EUR',
+      maximumFractionDigits: 2
+    });
+  }
+
+  function showToast(msg) {
+    const el = document.getElementById('toast');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 2200);
+  }
+
+  // ----- Modal confirmación -----
+  let pendingConfirm = null;
+
+  function openConfirm(message, onOk) {
     const overlay = document.getElementById('confirmModal');
     const msgEl = document.getElementById('confirmMessage');
     if (!overlay || !msgEl) return;
-    msgEl.textContent = message;
-    confirmCallback = onConfirm || null;
-    overlay.classList.add('show');
+    msgEl.textContent = message || '¿Seguro que quieres eliminar este elemento?';
+    pendingConfirm = typeof onOk === 'function' ? onOk : null;
+    overlay.classList.add('active');
   }
 
   function closeConfirm() {
     const overlay = document.getElementById('confirmModal');
-    if (!overlay) return;
-    overlay.classList.remove('show');
-    confirmCallback = null;
+    if (overlay) overlay.classList.remove('active');
+    pendingConfirm = null;
   }
 
+  // ----- Navegación por meses -----
+  function updateMonthDisplay() {
+    const span = document.getElementById('monthDisplay');
+    if (span) {
+      span.textContent = monthNames[currentMonth] + ' ' + currentYear;
+    }
+
+    const pickerYear = document.getElementById('pickerYear');
+    if (pickerYear) pickerYear.textContent = currentYear;
+
+    const mk = getCurrentMonthKey();
+    const monthsGrid = document.getElementById('monthsGrid');
+    if (monthsGrid) {
+      monthsGrid.querySelectorAll('.month-btn').forEach((btn, idx) => {
+        const btnKey = monthKey(currentYear, idx);
+        btn.classList.toggle('selected', btnKey === mk);
+      });
+    }
+
+    loadNotasMes();
+  }
+
+  function changeMonth(diff) {
+    currentMonth += diff;
+    if (currentMonth < 0) {
+      currentMonth = 11;
+      currentYear -= 1;
+    } else if (currentMonth > 11) {
+      currentMonth = 0;
+      currentYear += 1;
+    }
+    updateMonthDisplay();
+    renderAll();
+  }
+
+  function setupMonthPicker() {
+    const dropdown = document.getElementById('monthPickerDropdown');
+    const display = document.getElementById('monthDisplay');
+    const monthsGrid = document.getElementById('monthsGrid');
+    const yearPrev = document.getElementById('yearPrev');
+    const yearNext = document.getElementById('yearNext');
+
+    if (!dropdown || !display || !monthsGrid || !yearPrev || !yearNext) return;
+
+    monthsGrid.innerHTML = '';
+    monthNames.forEach((name, idx) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'month-btn';
+      btn.textContent = name.slice(0, 3);
+      btn.dataset.monthIndex = String(idx);
+      monthsGrid.appendChild(btn);
+    });
+
+    display.addEventListener('click', () => {
+      dropdown.classList.toggle('active');
+    });
+
+    yearPrev.addEventListener('click', () => {
+      currentYear -= 1;
+      updateMonthDisplay();
+    });
+    yearNext.addEventListener('click', () => {
+      currentYear += 1;
+      updateMonthDisplay();
+    });
+
+    monthsGrid.addEventListener('click', (e) => {
+      const btn = e.target.closest('.month-btn');
+      if (!btn) return;
+      const idx = Number(btn.dataset.monthIndex || '0');
+      currentMonth = idx;
+      updateMonthDisplay();
+      dropdown.classList.remove('active');
+      renderAll();
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!dropdown.contains(e.target) && e.target !== display) {
+        dropdown.classList.remove('active');
+      }
+    });
+  }
+
+  // ----- Tabs -----
+  function activateTab(tab) {
+    const sections = Array.from(document.querySelectorAll('.tab-section'));
+    const btns = Array.from(document.querySelectorAll('.tab-btn'));
+
+    sections.forEach(sec => {
+      const isActive = sec.dataset.tab === tab;
+      sec.classList.toggle('active', isActive);
+    });
+    btns.forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tabTarget === tab);
+    });
+  }
+  window.activateTab = activateTab;
+
+  function setupTabs() {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tabTarget;
+        if (!tab) return;
+        activateTab(tab);
+      });
+    });
+  }
+
+  // ----- Cálculos por mes -----
+  function getIngresosBaseTotal() {
+    const ib = state.ingresosBase || {};
+    return (Number(ib.juan) || 0) +
+           (Number(ib.saray) || 0) +
+           (Number(ib.otros) || 0);
+  }
+
+  function getIngresosPuntualesMes(year, month) {
+    const mk = monthKey(year, month);
+    return state.ingresosPuntuales.filter(ip => {
+      const ym = parseDateToYm(ip.fecha);
+      return ym && monthKey(ym.y, ym.m) === mk;
+    });
+  }
+
+  function getGastosMes(year, month) {
+    const mk = monthKey(year, month);
+    return state.gastos.filter(g => {
+      const ym = parseDateToYm(g.fecha);
+      return ym && monthKey(ym.y, ym.m) === mk;
+    });
+  }
+
+  function getTotalFijosForMonth(year, month) {
+    const mk = monthKey(year, month);
+    return (state.fijos || []).reduce((s, f) => {
+      const end = f.endMonth;
+      if (end && end <= mk) return s; // si endMonth <= mk ya NO aplica
+      return s + (Number(f.importe) || 0);
+    }, 0);
+  }
+
+  function updateResumenYChips() {
+    const ingresosBase = getIngresosBaseTotal();
+    const ingresosPuntualesMes = getIngresosPuntualesMes(currentYear, currentMonth);
+    const totalIngPuntuales = ingresosPuntualesMes.reduce((s, ip) => s + (Number(ip.importe) || 0), 0);
+    const ingresosTotales = ingresosBase + totalIngPuntuales;
+
+    const gastosMes = getGastosMes(currentYear, currentMonth);
+    const totalGastosVar = gastosMes.reduce((s, g) => s + (Number(g.importe) || 0), 0);
+    const totalFijosMes = getTotalFijosForMonth(currentYear, currentMonth);
+    const totalGastos = totalFijosMes + totalGastosVar;
+    const balance = ingresosTotales - totalGastos;
+
+    const chipIngresos = document.getElementById('chipIngresos');
+    const chipGastos = document.getElementById('chipGastos');
+    const chipBalance = document.getElementById('chipBalance');
+    const chipBalanceWrap = document.getElementById('chipBalanceWrap');
+    const chipHuchasTotal = document.getElementById('chipHuchasTotal');
+
+    if (chipIngresos) chipIngresos.textContent = formatCurrency(ingresosTotales);
+    if (chipGastos) chipGastos.textContent = formatCurrency(totalGastos);
+    if (chipBalance) chipBalance.textContent = formatCurrency(balance);
+    if (chipBalanceWrap) {
+      chipBalanceWrap.classList.remove('balance-pos', 'balance-neg');
+      chipBalanceWrap.classList.add(balance >= 0 ? 'balance-pos' : 'balance-neg');
+    }
+
+    const totalHuchas = state.huchas.reduce((s, h) => s + (Number(h.saldo) || 0), 0);
+    if (chipHuchasTotal) {
+      chipHuchasTotal.textContent = 'Huchas: ' + formatCurrency(totalHuchas);
+    }
+
+    const resIngMes = document.getElementById('resIngMes');
+    const resFijosMes = document.getElementById('resFijosMes');
+    const resVarMes = document.getElementById('resVarMes');
+    const resBalMes = document.getElementById('resBalMes');
+
+    if (resIngMes) resIngMes.textContent = formatCurrency(ingresosTotales);
+    if (resFijosMes) resFijosMes.textContent = formatCurrency(totalFijosMes);
+    if (resVarMes) resVarMes.textContent = formatCurrency(totalGastosVar);
+    if (resBalMes) resBalMes.textContent = formatCurrency(balance);
+  }
+
+  // ----- Ingresos base -----
+  function setupIngresosBase() {
+    const ingJuan = document.getElementById('ingJuan');
+    const ingSaray = document.getElementById('ingSaray');
+    const ingOtros = document.getElementById('ingOtros');
+    const btnSave = document.getElementById('btnSaveIngresos');
+
+    if (ingJuan) ingJuan.value = state.ingresosBase.juan || '';
+    if (ingSaray) ingSaray.value = state.ingresosBase.saray || '';
+    if (ingOtros) ingOtros.value = state.ingresosBase.otros || '';
+
+    if (btnSave) {
+      btnSave.addEventListener('click', () => {
+        state.ingresosBase = {
+          juan: Number(ingJuan && ingJuan.value) || 0,
+          saray: Number(ingSaray && ingSaray.value) || 0,
+          otros: Number(ingOtros && ingOtros.value) || 0
+        };
+        saveState();
+        updateResumenYChips();
+        showToast('Ingresos base guardados.');
+      });
+    }
+  }
+
+  // ----- Ingresos puntuales -----
+  function renderIngresosPuntualesLista() {
+    const cont = document.getElementById('ingresosPuntualesLista');
+    if (!cont) return;
+
+    const list = getIngresosPuntualesMes(currentYear, currentMonth);
+    if (!list.length) {
+      cont.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">💶</div>
+          No hay ingresos puntuales este mes.
+        </div>`;
+      return;
+    }
+
+    cont.innerHTML = '';
+    list
+      .slice()
+      .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''))
+      .forEach(ip => {
+        const item = document.createElement('div');
+        item.className = 'expense-item';
+        item.innerHTML = `
+          <div class="expense-main">
+            <div class="expense-line1">+ ${formatCurrency(ip.importe)}</div>
+            <div class="expense-line2">${ip.fecha || ''} · ${ip.desc || ''}</div>
+          </div>
+          <div class="expense-actions">
+            <button class="btn btn-danger-chip" data-action="del" data-id="${ip.id}">🗑</button>
+          </div>
+        `;
+        cont.appendChild(item);
+      });
+
+    cont.querySelectorAll('button[data-action="del"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        openConfirm('¿Eliminar este ingreso puntual?', () => {
+          state.ingresosPuntuales = state.ingresosPuntuales.filter(ip => String(ip.id) !== String(id));
+          saveState();
+          renderIngresosPuntualesLista();
+          updateResumenYChips();
+          showToast('Ingreso puntual eliminado.');
+        });
+      });
+    });
+  }
+
+  function setupIngresosPuntuales() {
+    const fechaEl = document.getElementById('ingresoPuntualFecha');
+    const descEl = document.getElementById('ingresoPuntualDesc');
+    const impEl = document.getElementById('ingresoPuntualImporte');
+    const btnAdd = document.getElementById('btnAddIngresoPuntual');
+
+    if (fechaEl && !fechaEl.value) {
+      const today = new Date();
+      fechaEl.value = today.toISOString().slice(0, 10);
+    }
+
+    if (btnAdd) {
+      btnAdd.addEventListener('click', () => {
+        const fecha = fechaEl && fechaEl.value;
+        const desc = descEl && descEl.value.trim();
+        const importe = Number(impEl && impEl.value);
+
+        if (!fecha) {
+          showToast('Pon una fecha.');
+          return;
+        }
+        if (!(importe > 0)) {
+          showToast('El importe debe ser mayor que 0.');
+          return;
+        }
+
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        state.ingresosPuntuales.push({ id, fecha, desc, importe });
+        saveState();
+
+        if (descEl) descEl.value = '';
+        if (impEl) impEl.value = '';
+
+        renderIngresosPuntualesLista();
+        updateResumenYChips();
+        showToast('Ingreso puntual añadido.');
+      });
+    }
+  }
+
+  // ----- Gastos fijos -----
+  function renderFijosTable() {
+    const cont = document.getElementById('fijosTableContainer');
+    const totalEl = document.getElementById('totalFijosDisplay');
+    if (!cont) return;
+
+    const mk = getCurrentMonthKey();
+    const all = state.fijos || [];
+
+    // Solo mostramos fijos activos en el mes actual (o en el mes que estés viendo)
+    const activos = all.filter(f => !f.endMonth || f.endMonth > mk);
+
+    const totalMes = getTotalFijosForMonth(currentYear, currentMonth);
+    if (totalEl) totalEl.textContent = formatCurrency(totalMes);
+
+    if (!activos.length) {
+      cont.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">🏠</div>
+          No hay gastos fijos activos en este mes.
+        </div>`;
+      return;
+    }
+
+    let html = `
+      <table class="fixed-expense-table">
+        <thead>
+          <tr>
+            <th>Gasto</th>
+            <th>Importe mensual</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    activos.forEach(f => {
+      const end = f.endMonth;
+      const willEnd = end && end > mk;
+      const statusText = end
+        ? `<div class="small-text">${willEnd ? 'Se inactivará desde ' : 'Inactivo desde '}${formatMonthKey(end)}</div>`
+        : '';
+
+      html += `
+        <tr data-id="${f.id}">
+          <td>
+            ${f.nombre || ''}
+            ${statusText}
+          </td>
+          <td>${formatCurrency(f.importe)}</td>
+          <td style="text-align:right;">
+            <button class="btn btn-edit" data-action="edit" data-id="${f.id}">✏</button>
+            <button class="btn btn-danger-chip" data-action="end" data-id="${f.id}" title="Dejar de aplicar desde este mes">🗑</button>
+            <button class="btn btn-outline" data-action="del" data-id="${f.id}" title="Borrar definitivamente">✖</button>
+          </td>
+        </tr>`;
+    });
+
+    html += '</tbody></table>';
+    cont.innerHTML = html;
+
+    // Papelera: marcar fin desde este mes
+    cont.querySelectorAll('button[data-action="end"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        openConfirm(
+          '¿Dejar de aplicar este gasto fijo a partir de este mes? Los meses anteriores se mantienen igual.',
+          () => {
+            const fijo = state.fijos.find(f => String(f.id) === String(id));
+            if (fijo) {
+              fijo.endMonth = getCurrentMonthKey();
+              saveState();
+              renderFijosTable();
+              updateResumenYChips();
+              showToast('Gasto fijo desactivado a partir de este mes.');
+            }
+          }
+        );
+      });
+    });
+
+    // Botón de borrado definitivo
+    cont.querySelectorAll('button[data-action="del"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        openConfirm(
+          '¿Eliminar este gasto fijo del histórico? Afectará al cálculo de meses pasados.',
+          () => {
+            state.fijos = state.fijos.filter(f => String(f.id) !== String(id));
+            saveState();
+            renderFijosTable();
+            updateResumenYChips();
+            showToast('Gasto fijo eliminado definitivamente.');
+          }
+        );
+      });
+    });
+
+    // Editar
+    cont.querySelectorAll('button[data-action="edit"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const fijo = state.fijos.find(f => String(f.id) === String(id));
+        if (!fijo) return;
+        openEditModal('fijo', fijo);
+      });
+    });
+  }
+
+  function setupFijos() {
+    const nombreEl = document.getElementById('fijoNombre');
+    const impEl = document.getElementById('fijoImporte');
+    const finEl = document.getElementById('fijoFinMes');
+    const btnAdd = document.getElementById('btnAddFijo');
+
+    if (btnAdd) {
+      btnAdd.addEventListener('click', () => {
+        const nombre = nombreEl && nombreEl.value.trim();
+        const importe = Number(impEl && impEl.value);
+        const endRaw = finEl && finEl.value ? finEl.value.trim() : '';
+        const endMonth = endRaw || null;
+
+        if (!nombre) {
+          showToast('Pon un nombre al gasto fijo.');
+          return;
+        }
+        if (isNaN(importe)) {
+          showToast('El importe debe ser un número válido.');
+          return;
+        }
+
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        state.fijos.push({ id, nombre, importe, endMonth });
+        saveState();
+
+        if (nombreEl) nombreEl.value = '';
+        if (impEl) impEl.value = '';
+        if (finEl) finEl.value = '';
+
+        renderFijosTable();
+        updateResumenYChips();
+        showToast('Gasto fijo añadido.');
+      });
+    }
+  }
+
+  // ----- Categorías sugeridas -----
+  function rebuildCategoriasSugerencias() {
+    const dl = document.getElementById('catSugerencias');
+    if (!dl) return;
+    const cats = new Set();
+
+    state.gastos.forEach(g => {
+      if (g.categoria) cats.add(g.categoria);
+    });
+    state.sobres.forEach(s => {
+      if (s.nombre) cats.add(s.nombre);
+    });
+
+    dl.innerHTML = '';
+    Array.from(cats)
+      .sort((a, b) => a.localeCompare(b))
+      .forEach(c => {
+        const o = document.createElement('option');
+        o.value = c;
+        dl.appendChild(o);
+      });
+  }
+
+  // ----- Gastos variables -----
+  function renderGastosLista() {
+    const cont = document.getElementById('gastosLista');
+    if (!cont) return;
+
+    const list = getGastosMes(currentYear, currentMonth);
+    if (!list.length) {
+      cont.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">🛒</div>
+          No hay gastos registrados este mes.
+        </div>`;
+      return;
+    }
+
+    cont.innerHTML = '';
+    list
+      .slice()
+      .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''))
+      .forEach(g => {
+        const item = document.createElement('div');
+        item.className = 'expense-item';
+        item.innerHTML = `
+          <div class="expense-main">
+            <div class="expense-line1">
+              <span class="amount-neg">- ${formatCurrency(g.importe)}</span> · ${g.categoria || 'Sin categoría'}
+            </div>
+            <div class="expense-line2">${g.fecha || ''} · ${g.desc || ''}</div>
+          </div>
+          <div class="expense-actions">
+            <button class="btn btn-edit" data-action="edit" data-id="${g.id}">✏</button>
+            <button class="btn btn-danger-chip" data-action="del" data-id="${g.id}">🗑</button>
+          </div>
+        `;
+        cont.appendChild(item);
+      });
+
+    cont.querySelectorAll('button[data-action="del"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        openConfirm('¿Eliminar este gasto?', () => {
+          state.gastos = state.gastos.filter(g => String(g.id) !== String(id));
+          saveState();
+          renderGastosLista();
+          renderSobresLista();
+          updateResumenYChips();
+          showToast('Gasto eliminado.');
+        });
+      });
+    });
+
+    cont.querySelectorAll('button[data-action="edit"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const gasto = state.gastos.find(g => String(g.id) === String(id));
+        if (!gasto) return;
+        openEditModal('gasto', gasto);
+      });
+    });
+  }
+
+  function setupGastos() {
+    const fechaEl = document.getElementById('gastoFecha');
+    const catEl = document.getElementById('gastoCategoria');
+    const descEl = document.getElementById('gastoDesc');
+    const impEl = document.getElementById('gastoImporte');
+    const btnAdd = document.getElementById('btnAddGasto');
+
+    if (fechaEl && !fechaEl.value) {
+      const today = new Date();
+      fechaEl.value = today.toISOString().slice(0, 10);
+    }
+
+    if (btnAdd) {
+      btnAdd.addEventListener('click', () => {
+        const fecha = fechaEl && fechaEl.value;
+        const categoria = catEl && catEl.value.trim();
+        const desc = descEl && descEl.value.trim();
+        const importe = Number(impEl && impEl.value);
+
+        if (!fecha) {
+          showToast('Pon una fecha.');
+          return;
+        }
+        if (!categoria) {
+          showToast('Pon una categoría.');
+          return;
+        }
+        if (!(importe > 0)) {
+          showToast('El importe debe ser mayor que 0.');
+          return;
+        }
+
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        state.gastos.push({ id, fecha, categoria, desc, importe });
+        saveState();
+
+        if (descEl) descEl.value = '';
+        if (impEl) impEl.value = '';
+
+        renderGastosLista();
+        renderSobresLista();
+        rebuildCategoriasSugerencias();
+        updateResumenYChips();
+        showToast('Gasto añadido.');
+      });
+    }
+  }
+
+  // ----- Sobres / presupuestos -----
+function renderSobresLista() {
+  const cont = document.getElementById('sobresLista');
+  if (!cont) return;
+
+  const sobres = state.sobres || [];
+  if (!sobres.length) {
+    cont.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">📩</div>
+        No hay presupuestos creados.
+      </div>`;
+    return;
+  }
+
+  const gastosMes = getGastosMes(currentYear, currentMonth);
+  cont.innerHTML = '';
+
+  sobres.forEach(s => {
+    const totalGastado = gastosMes
+      .filter(g => (g.categoria || '').toLowerCase() === (s.nombre || '').toLowerCase())
+      .reduce((sum, g) => sum + (Number(g.importe) || 0), 0);
+
+    const presupuesto = Number(s.presupuesto) || 0;
+    const restante = presupuesto - totalGastado;
+
+    let statusClass = 'good';
+    let statusText = 'Dentro de presupuesto';
+    const ratio = presupuesto > 0 ? totalGastado / presupuesto : 0;
+
+    if (presupuesto === 0) {
+      statusClass = 'warning';
+      statusText = 'Sin presupuesto definido';
+    } else if (ratio >= 0.9 && ratio < 1) {
+      statusClass = 'warning';
+      statusText = 'A punto de agotar presupuesto';
+    } else if (ratio >= 1) {
+      statusClass = 'over';
+      statusText = 'Presupuesto superado';
+    }
+
+    const pct = presupuesto > 0 ? Math.min(100, (totalGastado / presupuesto) * 100) : 0;
+
+    const card = document.createElement('div');
+    card.className = 'budget-card';
+    card.innerHTML = `
+      <div class="budget-card-header">
+        <div class="budget-name">📩 ${s.nombre || 'Sin nombre'}</div>
+        <div>
+          <button class="btn btn-edit" data-action="edit" data-id="${s.id}">✏</button>
+          <button class="btn btn-danger-chip" data-action="del" data-id="${s.id}">🗑</button>
+        </div>
+      </div>
+      <div class="budget-amounts">
+        <div class="budget-amount-item">
+          <div class="budget-amount-label">Presupuesto</div>
+          <div class="budget-amount-value">${formatCurrency(presupuesto)}</div>
+        </div>
+        <div class="budget-amount-item">
+          <div class="budget-amount-label">Gastado</div>
+          <div class="budget-amount-value">${formatCurrency(totalGastado)}</div>
+        </div>
+      </div>
+      <div class="budget-progress-bar">
+        <div class="budget-progress-fill ${ratio >= 1 ? 'over' : ''}" style="width:${pct}%;"></div>
+      </div>
+      <div class="budget-status ${statusClass}">
+        ${statusText} · Restante: ${formatCurrency(restante)}
+      </div>
+    `;
+    cont.appendChild(card);
+  });
+
+  // borrar sobre
+  cont.querySelectorAll('button[data-action="del"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      openConfirm('¿Eliminar este sobre/presupuesto?', () => {
+        state.sobres = state.sobres.filter(s => String(s.id) !== String(id));
+        saveState();
+        renderSobresLista();
+        rebuildCategoriasSugerencias();
+        showToast('Presupuesto eliminado.');
+      });
+    });
+  });
+
+  // editar sobre
+  cont.querySelectorAll('button[data-action="edit"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const sobre = state.sobres.find(s => String(s.id) === String(id));
+      if (!sobre) return;
+      openEditModal('sobre', sobre);
+    });
+  });
+}
+
+  function setupSobres() {
+    const nombreEl = document.getElementById('sobreNombre');
+    const impEl = document.getElementById('sobreImporte');
+    const btnAdd = document.getElementById('btnAddSobre');
+
+    if (btnAdd) {
+      btnAdd.addEventListener('click', () => {
+        const nombre = nombreEl && nombreEl.value.trim();
+        const presupuesto = Number(impEl && impEl.value);
+
+        if (!nombre) {
+          showToast('Pon un nombre al sobre.');
+          return;
+        }
+        if (isNaN(presupuesto)) {
+          showToast('El presupuesto debe ser un número válido.');
+          return;
+        }
+
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        state.sobres.push({ id, nombre, presupuesto });
+        saveState();
+
+        if (nombreEl) nombreEl.value = '';
+        if (impEl) impEl.value = '';
+
+        renderSobresLista();
+        rebuildCategoriasSugerencias();
+        showToast('Presupuesto creado.');
+      });
+    }
+  }
+
+  // ----- Huchas -----
+  function renderHuchas() {
+    const cont = document.getElementById('huchasLista');
+    const select = document.getElementById('huchaSelect');
+    if (!cont) return;
+
+    if (select) {
+      select.innerHTML = '<option value="">-- Elige una hucha --</option>';
+    }
+
+    const list = state.huchas || [];
+    if (!list.length) {
+      cont.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">🐷</div>
+          No has creado ninguna hucha todavía.
+        </div>`;
+      return;
+    }
+
+    cont.innerHTML = '';
+    list.forEach(h => {
+      const objetivo = Number(h.objetivo) || 0;
+      const saldo = Number(h.saldo) || 0;
+      const ratio = objetivo > 0 ? Math.min(1, saldo / objetivo) : 0;
+      const pct = objetivo > 0 ? Math.min(100, (saldo / objetivo) * 100) : 0;
+
+      const card = document.createElement('div');
+      card.className = 'budget-card';
+      card.innerHTML = `
+        <div class="budget-card-header">
+          <div class="budget-name">🐷 ${h.nombre || 'Sin nombre'}</div>
+          <div>
+            <button class="btn btn-edit" data-action="edit" data-id="${h.id}">✏</button>
+            <button class="btn btn-danger-chip" data-action="del" data-id="${h.id}">🗑</button>
+          </div>
+        </div>
+        <div class="budget-amounts">
+          <div class="budget-amount-item">
+            <div class="budget-amount-label">Saldo</div>
+            <div class="budget-amount-value">${formatCurrency(saldo)}</div>
+          </div>
+          <div class="budget-amount-item">
+            <div class="budget-amount-label">Objetivo</div>
+            <div class="budget-amount-value">${objetivo ? formatCurrency(objetivo) : '—'}</div>
+          </div>
+        </div>
+        <div class="budget-progress-bar">
+          <div class="budget-progress-fill" style="width:${pct}%;"></div>
+        </div>
+        <div class="budget-status ${ratio >= 1 ? 'good' : 'warning'}">
+          ${objetivo
+            ? (ratio >= 1 ? '¡Objetivo conseguido!' : 'Progreso hacia objetivo')
+            : 'Hucha sin objetivo fijo'}
+        </div>
+      `;
+      cont.appendChild(card);
+
+      if (select) {
+        const opt = document.createElement('option');
+        opt.value = h.id;
+        opt.textContent = `${h.nombre} (${formatCurrency(saldo)})`;
+        select.appendChild(opt);
+      }
+    });
+
+    cont.querySelectorAll('button[data-action="del"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        openConfirm('¿Eliminar esta hucha? El saldo se perderá en el control.', () => {
+          state.huchas = state.huchas.filter(h => String(h.id) !== String(id));
+          saveState();
+          renderHuchas();
+          updateResumenYChips();
+          showToast('Hucha eliminada.');
+        });
+      });
+    });
+
+    cont.querySelectorAll('button[data-action="edit"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const hucha = state.huchas.find(h => String(h.id) === String(id));
+        if (!hucha) return;
+        openEditModal('hucha', hucha);
+      });
+    });
+  }
+
+  function setupHuchas() {
+    const nombreEl = document.getElementById('huchaNombre');
+    const objEl = document.getElementById('huchaObjetivo');
+    const saldoEl = document.getElementById('huchaSaldoInicial');
+    const btnAdd = document.getElementById('btnAddHucha');
+
+    const select = document.getElementById('huchaSelect');
+    const impMovEl = document.getElementById('huchaImporte');
+    const accionEl = document.getElementById('huchaAccion');
+    const btnMov = document.getElementById('btnHuchaMovimiento');
+
+    if (btnAdd) {
+      btnAdd.addEventListener('click', () => {
+        const nombre = nombreEl && nombreEl.value.trim();
+        const objetivo = Number(objEl && objEl.value) || 0;
+        const saldoInicial = Number(saldoEl && saldoEl.value) || 0;
+
+        if (!nombre) {
+          showToast('Pon un nombre a la hucha.');
+          return;
+        }
+
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        state.huchas.push({ id, nombre, objetivo, saldo: saldoInicial });
+        saveState();
+
+        if (nombreEl) nombreEl.value = '';
+        if (objEl) objEl.value = '';
+        if (saldoEl) saldoEl.value = '';
+
+        renderHuchas();
+        updateResumenYChips();
+        rebuildCategoriasSugerencias();
+        showToast('Hucha creada.');
+      });
+    }
+
+    if (btnMov) {
+      btnMov.addEventListener('click', () => {
+        const huchaId = select && select.value;
+        const importe = Number(impMovEl && impMovEl.value);
+        const accion = accionEl && accionEl.value;
+
+        if (!huchaId) {
+          showToast('Elige una hucha.');
+          return;
+        }
+        if (!(importe > 0)) {
+          showToast('El importe debe ser mayor que 0.');
+          return;
+        }
+
+        const hucha = state.huchas.find(h => String(h.id) === String(huchaId));
+        if (!hucha) {
+          showToast('Hucha no encontrada.');
+          return;
+        }
+
+        if (accion === 'aportar') {
+          hucha.saldo = (Number(hucha.saldo) || 0) + importe;
+          const today = new Date();
+          const fecha = today.toISOString().slice(0, 10);
+          const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+          state.gastos.push({
+            id,
+            fecha,
+            categoria: 'Huchas',
+            desc: 'Ahorro en ' + (hucha.nombre || ''),
+            importe
+          });
+          showToast('Aportación registrada en la hucha y como gasto.');
+        } else {
+          const saldoActual = Number(hucha.saldo) || 0;
+          if (importe > saldoActual) {
+            showToast('No hay saldo suficiente en la hucha.');
+            return;
+          }
+          hucha.saldo = saldoActual - importe;
+          showToast('Retirada registrada en la hucha.');
+        }
+
+        saveState();
+        if (impMovEl) impMovEl.value = '';
+        renderHuchas();
+        renderGastosLista();
+        renderSobresLista();
+        updateResumenYChips();
+      });
+    }
+  }
+
+  // ----- Notas -----
+  function loadNotasMes() {
+    const area = document.getElementById('notasMes');
+    if (!area) return;
+    const mk = getCurrentMonthKey();
+    area.value = state.notasPorMes[mk] || '';
+  }
+
+  function setupNotas() {
+    const area = document.getElementById('notasMes');
+    const btn = document.getElementById('btnSaveNotas');
+    if (!area || !btn) return;
+
+    btn.addEventListener('click', () => {
+      const mk = getCurrentMonthKey();
+      state.notasPorMes[mk] = area.value || '';
+      saveState();
+      showToast('Notas del mes guardadas.');
+    });
+  }
+
+  // ----- Export / Import JSON -----
+  function setupExportImportJson() {
+    const btnExport = document.getElementById('btnExportJson');
+    const fileInput = document.getElementById('importFile');
+    const btnImportFile = document.getElementById('btnImportJsonFile');
+    const textArea = document.getElementById('importJsonText');
+    const btnImportText = document.getElementById('btnImportJsonText');
+
+    if (btnExport) {
+      btnExport.addEventListener('click', () => {
+        const dataStr = JSON.stringify(state, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const mk = getCurrentMonthKey();
+        a.href = url;
+        a.download = 'economia_familiar_' + mk + '.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('✅ Copia de seguridad descargada');
+      });
+    }
+
+    if (btnImportFile && fileInput) {
+      btnImportFile.addEventListener('click', () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) {
+          showToast('⚠️ Selecciona un archivo JSON');
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            const data = JSON.parse(ev.target.result);
+            applyBackupPayload(data);
+            saveState();
+            renderAll();
+            showToast('✅ Datos importados correctamente');
+          } catch (e) {
+            console.error(e);
+            showToast('❌ Error al leer el JSON');
+          }
+        };
+        reader.readAsText(file, 'utf-8');
+      });
+    }
+
+    if (btnImportText && textArea) {
+      btnImportText.addEventListener('click', () => {
+        const content = textArea.value.trim();
+        if (!content) {
+          showToast('⚠️ Pega el contenido del JSON');
+          return;
+        }
+        try {
+          const data = JSON.parse(content);
+          applyBackupPayload(data);
+          saveState();
+          renderAll();
+          showToast('✅ Datos importados correctamente');
+        } catch (e) {
+          console.error(e);
+          showToast('❌ El texto no es un JSON válido');
+        }
+      });
+    }
+  }
+
+  function applyBackupPayload(data) {
+    if (!data || typeof data !== 'object') {
+      throw new Error('Backup inválido');
+    }
+
+    const newState = {
+      ingresosBase: { juan: 0, saray: 0, otros: 0 },
+      fijos: [],
+      sobres: [],
+      huchas: [],
+      ingresosPuntuales: [],
+      gastos: [],
+      notasPorMes: {}
+    };
+
+    if (data.ingresosBase && typeof data.ingresosBase === 'object') {
+      newState.ingresosBase = {
+        juan: Number(data.ingresosBase.juan || 0),
+        saray: Number(data.ingresosBase.saray || 0),
+        otros: Number(data.ingresosBase.otros || 0)
+      };
+    } else if (data.baseConfig && typeof data.baseConfig === 'object') {
+      newState.ingresosBase = {
+        juan: Number(data.baseConfig.juan || 0),
+        saray: Number(data.baseConfig.saray || 0),
+        otros: Number(data.baseConfig.otros || 0)
+      };
+    }
+
+    if (Array.isArray(data.fijos)) {
+      newState.fijos = data.fijos.map(f => ({
+        id: String(f.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+        nombre: f.nombre || '',
+        importe: Number(f.importe || 0),
+        endMonth: f.endMonth || null
+      }));
+    } else if (Array.isArray(data.gastosFijos)) {
+      newState.fijos = data.gastosFijos.map(f => ({
+        id: String(f.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+        nombre: f.nombre || '',
+        importe: Number(f.importe || 0),
+        endMonth: f.endMonth || null
+      }));
+    }
+
+    if (Array.isArray(data.sobres)) {
+      newState.sobres = data.sobres.map(s => ({
+        id: String(s.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+        nombre: s.nombre || '',
+        presupuesto: Number(s.presupuesto || s.importe || 0)
+      }));
+    } else if (data.sobres && typeof data.sobres === 'object') {
+      newState.sobres = Object.keys(data.sobres).map(nombre => ({
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+        nombre,
+        presupuesto: Number(data.sobres[nombre] || 0)
+      }));
+    }
+
+    if (Array.isArray(data.huchas)) {
+      newState.huchas = data.huchas.map(h => ({
+        id: String(h.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+        nombre: h.nombre || '',
+        objetivo: Number(h.objetivo || 0),
+        saldo: Number(h.saldo || 0)
+      }));
+    }
+
+    if (Array.isArray(data.ingresosPuntuales)) {
+      newState.ingresosPuntuales = data.ingresosPuntuales.map(ip => ({
+        id: String(ip.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+        fecha: ip.fecha || '',
+        desc: ip.desc || '',
+        importe: Number(ip.importe || 0)
+      }));
+    }
+
+    if (Array.isArray(data.gastos)) {
+      newState.gastos = data.gastos.map(g => ({
+        id: String(g.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+        fecha: g.fecha || '',
+        categoria: g.categoria || 'Otros',
+        desc: g.desc || '',
+        importe: Number(g.importe || 0)
+      }));
+    } else if (Array.isArray(data.movimientos)) {
+      newState.gastos = data.movimientos.map(g => ({
+        id: String(g.id || (Date.now().toString(36) + Math.random().toString(36).slice(2))),
+        fecha: g.fecha || '',
+        categoria: g.categoria || 'Otros',
+        desc: g.desc || '',
+        importe: Number(g.importe || 0)
+      }));
+    }
+
+    if (data.notasPorMes && typeof data.notasPorMes === 'object') {
+      newState.notasPorMes = data.notasPorMes;
+    } else if (data.notasByMonth && typeof data.notasByMonth === 'object') {
+      newState.notasPorMes = data.notasByMonth;
+    }
+
+    state = newState;
+  }
+
+  // ----- Importar CSV -----
+  function setupImportCsv() {
+    const fileInput = document.getElementById('csvFile');
+    const btnImport = document.getElementById('btnImportCsv');
+    if (!btnImport || !fileInput) return;
+
+    btnImport.addEventListener('click', () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) {
+        showToast('⚠️ Selecciona un archivo CSV');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const text = ev.target.result;
+          const lines = text.split('\n').filter(l => l.trim());
+          let count = 0;
+
+          lines.forEach((line, idx) => {
+            if (idx === 0) return;
+            const parts = line.split(';');
+            if (parts.length < 3) return;
+
+            const concepto = parts[0] ? parts[0].trim() : '';
+            const fechaStr = parts[1] ? parts[1].trim() : '';
+            const importeStr = parts[2] ? parts[2].trim().replace(',', '.') : '';
+            const importe = parseFloat(importeStr);
+
+            if (isNaN(importe) || importe >= 0) return;
+
+            const importePos = Math.abs(importe);
+            const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+
+            state.gastos.push({
+              id,
+              fecha: fechaStr || new Date().toISOString().slice(0, 10),
+              categoria: 'Banco',
+              desc: concepto || 'Cargo bancario',
+              importe: importePos
+            });
+            count++;
+          });
+
+          saveState();
+          renderGastosLista();
+          renderSobresLista();
+          updateResumenYChips();
+          showToast(`✅ ${count} cargos importados del CSV`);
+        } catch (e) {
+          console.error(e);
+          showToast('❌ Error al leer el CSV');
+        }
+      };
+      reader.readAsText(file, 'utf-8');
+    });
+  }
+
+  // ----- Reset -----
+  function setupReset() {
+    const btn = document.getElementById('btnResetAll');
+    if (!btn) return;
+
+    btn.addEventListener('click', () => {
+      openConfirm('¿Estás seguro de que quieres borrar TODOS los datos? Esta acción no se puede deshacer.', () => {
+        localStorage.removeItem(STORAGE_KEY);
+        state = {
+          ingresosBase: { juan: 0, saray: 0, otros: 0 },
+          fijos: [],
+          sobres: [],
+          huchas: [],
+          ingresosPuntuales: [],
+          gastos: [],
+          notasPorMes: {}
+        };
+        renderAll();
+        showToast('✅ Todos los datos han sido borrados');
+      });
+    });
+  }
+
+  // ----- Modal edición genérica -----
+  function openEditModal(type, data) {
+    const overlay = document.getElementById('editModal');
+    const titleEl = document.getElementById('modalTitle');
+    const contentEl = document.getElementById('modalContent');
+    const saveBtn = document.getElementById('modalSave');
+    if (!overlay || !titleEl || !contentEl || !saveBtn) return;
+
+    let html = '';
+
+    if (type === 'fijo') {
+      titleEl.textContent = 'Editar gasto fijo';
+      const endVal = data.endMonth || '';
+      html = `
+        <div class="field-group">
+          <label>Nombre</label>
+          <input type="text" id="editNombre" value="${data.nombre || ''}" />
+        </div>
+        <div class="field-group">
+          <label>Importe mensual (€)</label>
+          <input type="number" id="editImporte" step="0.01" inputmode="decimal" value="${data.importe}" />
+        </div>
+        <div class="field-group">
+          <label>Último mes en el que se cobra (opcional)</label>
+          <input type="month" id="editEndMonth" value="${endVal || ''}" />
+          <div class="small-text">Si lo dejas vacío, el gasto no tiene fecha de fin.</div>
+        </div>`;
+    } else if (type === 'gasto') {
+      titleEl.textContent = 'Editar gasto';
+      html = `
+        <div class="field-group">
+          <label>Fecha</label>
+          <input type="date" id="editFecha" value="${data.fecha || ''}" />
+        </div>
+        <div class="field-group">
+          <label>Categoría</label>
+          <input type="text" id="editCategoria" value="${data.categoria || ''}" />
+        </div>
+        <div class="field-group">
+          <label>Descripción</label>
+          <input type="text" id="editDesc" value="${data.desc || ''}" />
+        </div>
+        <div class="field-group">
+          <label>Importe (€)</label>
+          <input type="number" id="editImporte" step="0.01" inputmode="decimal" value="${data.importe}" />
+        </div>`;
+    } else if (type === 'sobre') {
+      titleEl.textContent = 'Editar presupuesto';
+      html = `
+        <div class="field-group">
+          <label>Nombre del sobre</label>
+          <input type="text" id="editNombre" value="${data.nombre || ''}" />
+        </div>
+        <div class="field-group">
+          <label>Presupuesto mensual (€)</label>
+          <input type="number" id="editImporte" step="0.01" inputmode="decimal" value="${data.presupuesto}" />
+        </div>`;
+    } else if (type === 'hucha') {
+      titleEl.textContent = 'Editar hucha';
+      html = `
+        <div class="field-group">
+          <label>Nombre</label>
+          <input type="text" id="editNombre" value="${data.nombre || ''}" />
+        </div>
+        <div class="field-group">
+          <label>Objetivo (€)</label>
+          <input type="number" id="editObjetivo" step="0.01" inputmode="decimal" value="${data.objetivo || 0}" />
+        </div>
+        <div class="field-group">
+          <label>Saldo actual (€)</label>
+          <input type="number" id="editSaldo" step="0.01" inputmode="decimal" value="${data.saldo || 0}" />
+        </div>`;
+    } else {
+      titleEl.textContent = 'Editar';
+      html = '<p>No hay campos para editar.</p>';
+    }
+
+    contentEl.innerHTML = html;
+    saveBtn.dataset.editType = type;
+    saveBtn.dataset.editId = data.id;
+    overlay.classList.add('active');
+  }
+
+  function closeEditModal() {
+    const overlay = document.getElementById('editModal');
+    const contentEl = document.getElementById('modalContent');
+    const saveBtn = document.getElementById('modalSave');
+
+    if (overlay) overlay.classList.remove('active');
+    if (contentEl) contentEl.innerHTML = '';
+    if (saveBtn) {
+      saveBtn.dataset.editType = '';
+      saveBtn.dataset.editId = '';
+    }
+  }
+
+  function setupEditModalEvents() {
+    const modalClose = document.getElementById('modalClose');
+    const modalCancel = document.getElementById('modalCancel');
+    const modalSave = document.getElementById('modalSave');
+    const overlay = document.getElementById('editModal');
+
+    if (modalClose) modalClose.addEventListener('click', closeEditModal);
+    if (modalCancel) modalCancel.addEventListener('click', closeEditModal);
+    if (overlay) {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeEditModal();
+      });
+    }
+
+    if (modalSave) {
+      modalSave.addEventListener('click', () => {
+        const type = modalSave.dataset.editType;
+        const id = modalSave.dataset.editId;
+        if (!type || !id) {
+          closeEditModal();
+          return;
+        }
+
+        if (type === 'fijo') {
+          const nombreEl = document.getElementById('editNombre');
+          const impEl = document.getElementById('editImporte');
+          const endEl = document.getElementById('editEndMonth');
+          const fijo = state.fijos.find(f => String(f.id) === String(id));
+          if (fijo && nombreEl && impEl) {
+            fijo.nombre = nombreEl.value.trim();
+            fijo.importe = Number(impEl.value) || 0;
+            if (endEl && endEl.value.trim()) {
+              fijo.endMonth = endEl.value.trim();
+            } else {
+              fijo.endMonth = null;
+            }
+            saveState();
+            renderFijosTable();
+            updateResumenYChips();
+            showToast('Gasto fijo actualizado.');
+          }
+        } else if (type === 'gasto') {
+          const fechaEl = document.getElementById('editFecha');
+          const catEl = document.getElementById('editCategoria');
+          const descEl = document.getElementById('editDesc');
+          const impEl = document.getElementById('editImporte');
+          const gasto = state.gastos.find(g => String(g.id) === String(id));
+          if (gasto && fechaEl && catEl && descEl && impEl) {
+            gasto.fecha = fechaEl.value || gasto.fecha;
+            gasto.categoria = catEl.value.trim() || gasto.categoria;
+            gasto.desc = descEl.value.trim();
+            gasto.importe = Number(impEl.value) || 0;
+            saveState();
+            renderGastosLista();
+            renderSobresLista();
+            rebuildCategoriasSugerencias();
+            updateResumenYChips();
+            showToast('Gasto actualizado.');
+          }
+        } else if (type === 'sobre') {
+          const nombreEl = document.getElementById('editNombre');
+          const impEl = document.getElementById('editImporte');
+          const sobre = state.sobres.find(s => String(s.id) === String(id));
+          if (sobre && nombreEl && impEl) {
+            sobre.nombre = nombreEl.value.trim() || sobre.nombre;
+            sobre.presupuesto = Number(impEl.value) || 0;
+            saveState();
+            renderSobresLista();
+            rebuildCategoriasSugerencias();
+            showToast('Presupuesto actualizado.');
+          }
+        } else if (type === 'hucha') {
+          const nombreEl = document.getElementById('editNombre');
+          const objEl = document.getElementById('editObjetivo');
+          const saldoEl = document.getElementById('editSaldo');
+          const hucha = state.huchas.find(h => String(h.id) === String(id));
+          if (hucha && nombreEl && objEl && saldoEl) {
+            hucha.nombre = nombreEl.value.trim() || hucha.nombre;
+            hucha.objetivo = Number(objEl.value) || 0;
+            hucha.saldo = Number(saldoEl.value) || 0;
+            saveState();
+            renderHuchas();
+            updateResumenYChips();
+            showToast('Hucha actualizada.');
+          }
+        }
+
+        closeEditModal();
+      });
+    }
+  }
+
+  // ----- Confirm modal events -----
   function setupConfirmModalEvents() {
     const overlay = document.getElementById('confirmModal');
     const btnOk = document.getElementById('confirmOk');
     const btnCancel = document.getElementById('confirmCancel');
     const btnClose = document.getElementById('confirmClose');
 
-    if (!overlay) return;
-
-    const close = () => closeConfirm();
-
-    btnOk?.addEventListener('click', () => {
-      if (confirmCallback) confirmCallback();
-      closeConfirm();
-    });
-    btnCancel?.addEventListener('click', close);
-    btnClose?.addEventListener('click', close);
-
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) close();
-    });
-  }
-
-  function openEditModal(tipo, item) {
-    const overlay = document.getElementById('editModal');
-    const titleEl = document.getElementById('editModalTitle');
-    const nameEl = document.getElementById('editNombre');
-    const impEl = document.getElementById('editImporte');
-    const extraEl = document.getElementById('editExtra');
-    const fechaEl = document.getElementById('editFecha');
-    const fechaGroup = document.getElementById('editFechaGroup');
-    const fechaLabel = document.getElementById('editFechaLabel');
-
-    if (!overlay || !titleEl || !nameEl || !impEl || !extraEl || !fechaGroup || !fechaLabel) return;
-
-    editContext = { tipo, item: { ...item } };
-
-    switch (tipo) {
-      case 'fijo':
-        titleEl.textContent = 'Editar gasto fijo';
-        nameEl.value = item.nombre || '';
-        impEl.value = item.importe ?? 0;
-        extraEl.value = item.categoria || '';
-        fechaGroup.style.display = 'block';
-        fechaLabel.textContent = 'Mes fin (YYYY-MM)';
-        fechaEl.type = 'month';
-        fechaEl.value = item.endMonth || '';
-        break;
-      case 'ingresoPuntual':
-        titleEl.textContent = 'Editar ingreso puntual';
-        nameEl.value = item.desc || '';
-        impEl.value = item.importe ?? 0;
-        extraEl.value = '';
-        fechaGroup.style.display = 'block';
-        fechaLabel.textContent = 'Fecha';
-        fechaEl.type = 'date';
-        fechaEl.value = item.fecha || '';
-        break;
-      case 'gasto':
-        titleEl.textContent = 'Editar gasto variable';
-        nameEl.value = item.desc || '';
-        impEl.value = item.importe ?? 0;
-        extraEl.value = item.categoria || '';
-        fechaGroup.style.display = 'block';
-        fechaLabel.textContent = 'Fecha';
-        fechaEl.type = 'date';
-        fechaEl.value = item.fecha || '';
-        break;
-      case 'sobre':
-        titleEl.textContent = 'Editar sobre';
-        nameEl.value = item.nombre || '';
-        impEl.value = item.presupuesto ?? 0;
-        extraEl.value = '';
-        fechaGroup.style.display = 'none';
-        break;
-      case 'hucha':
-        titleEl.textContent = 'Editar hucha';
-        nameEl.value = item.nombre || '';
-        impEl.value = item.objetivo ?? 0;
-        extraEl.value = '';
-        fechaGroup.style.display = 'none';
-        break;
-      default:
-        titleEl.textContent = 'Editar';
-        nameEl.value = '';
-        impEl.value = 0;
-        extraEl.value = '';
-        fechaGroup.style.display = 'none';
+    if (btnOk) {
+      btnOk.addEventListener('click', () => {
+        if (pendingConfirm) pendingConfirm();
+        closeConfirm();
+      });
     }
+    if (btnCancel) btnCancel.addEventListener('click', closeConfirm);
+    if (btnClose) btnClose.addEventListener('click', closeConfirm);
 
-    overlay.classList.add('show');
-  }
-
-  function closeEditModal() {
-    const overlay = document.getElementById('editModal');
-    if (!overlay) return;
-    overlay.classList.remove('show');
-    editContext = null;
-  }
-
-  function setupEditModalEvents() {
-    const overlay = document.getElementById('editModal');
-    const btnClose = document.getElementById('editModalClose');
-    const btnCancel = document.getElementById('editModalCancel');
-    const btnSave = document.getElementById('editModalSave');
-
-    if (!overlay) return;
-
-    const close = () => closeEditModal();
-
-    btnClose?.addEventListener('click', close);
-    btnCancel?.addEventListener('click', close);
-
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) close();
-    });
-
-    btnSave?.addEventListener('click', () => {
-      if (!editContext) return;
-      const nameEl = document.getElementById('editNombre');
-      const impEl = document.getElementById('editImporte');
-      const extraEl = document.getElementById('editExtra');
-      const fechaEl = document.getElementById('editFecha');
-
-      const nombre = nameEl.value.trim();
-      const importe = parseFloat(impEl.value) || 0;
-      const extra = extraEl.value.trim();
-      const fecha = fechaEl.value;
-
-      const { tipo, item } = editContext;
-
-      if (tipo === 'fijo') {
-        state.fijos = state.fijos.map(f =>
-          f.id === item.id
-            ? { ...f, nombre, importe, categoria: extra || f.categoria, endMonth: fecha || null }
-            : f
-        );
-        saveState();
-        renderFijos();
-        updateResumen();
-      } else if (tipo === 'ingresoPuntual') {
-        state.ingresosPuntuales = state.ingresosPuntuales.map(i =>
-          i.id === item.id ? { ...i, desc: nombre, importe, fecha: fecha || i.fecha } : i
-        );
-        saveState();
-        renderIngresosPuntuales();
-        updateResumen();
-      } else if (tipo === 'gasto') {
-        state.gastos = state.gastos.map(g =>
-          g.id === item.id ? { ...g, desc: nombre, importe, categoria: extra || g.categoria, fecha: fecha || g.fecha } : g
-        );
-        saveState();
-        renderGastosVariables();
-        renderSobres();
-        updateResumen();
-      } else if (tipo === 'sobre') {
-        state.sobres = state.sobres.map(s =>
-          s.id === item.id ? { ...s, nombre, presupuesto: importe } : s
-        );
-        saveState();
-        renderSobres();
-      } else if (tipo === 'hucha') {
-        state.huchas = state.huchas.map(h =>
-          h.id === item.id ? { ...h, nombre, objetivo: importe } : h
-        );
-        saveState();
-        renderHuchas();
-      }
-
-      closeEditModal();
-      showToast('Cambios guardados.');
-    });
-  }
-
-  // ---- Mes actual y UI ----
-  function updateMonthDisplay() {
-    const display = document.getElementById('monthDisplay');
-    if (!display) return;
-    const { year, month } = parseYM(currentYM);
-    display.textContent = `${monthNames[month - 1]} ${year}`;
-  }
-
-  function changeMonth(delta) {
-    const { year, month } = parseYM(currentYM);
-    const date = new Date(year, month - 1 + delta, 1);
-    currentYM = getYM(date);
-    updateMonthDisplay();
-    loadMonthBoundUI();
-  }
-
-  function setupMonthNav() {
-    const btnPrev = document.getElementById('btnPrevMonth');
-    const btnNext = document.getElementById('btnNextMonth');
-    const display = document.getElementById('monthDisplay');
-
-    btnPrev?.addEventListener('click', () => {
-      changeMonth(-1);
-    });
-    btnNext?.addEventListener('click', () => {
-      changeMonth(1);
-    });
-    display?.addEventListener('click', toggleMonthPicker);
-
-    buildMonthPicker();
-  }
-
-  function buildMonthPicker() {
-    const dropdown = document.getElementById('monthPickerDropdown');
-    const yearPrev = document.getElementById('yearPrev');
-    const yearNext = document.getElementById('yearNext');
-    const yearEl = document.getElementById('pickerYear');
-    const monthsGrid = document.getElementById('monthsGrid');
-    if (!dropdown || !yearPrev || !yearNext || !yearEl || !monthsGrid) return;
-
-    let currentYear = parseYM(currentYM).year;
-    yearEl.textContent = currentYear;
-
-    function renderMonths() {
-      monthsGrid.innerHTML = '';
-      for (let m = 1; m <= 12; m++) {
-        const ym = `${currentYear}-${m.toString().padStart(2,'0')}`;
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'month-pill' + (ym === currentYM ? ' active' : '');
-        btn.textContent = monthNames[m - 1].slice(0,3);
-        btn.addEventListener('click', () => {
-          currentYM = ym;
-          yearEl.textContent = currentYear;
-          updateMonthDisplay();
-          loadMonthBoundUI();
-          dropdown.classList.remove('show');
-        });
-        monthsGrid.appendChild(btn);
-      }
-    }
-    renderMonths();
-
-    yearPrev.addEventListener('click', () => {
-      currentYear--;
-      yearEl.textContent = currentYear;
-      renderMonths();
-    });
-
-    yearNext.addEventListener('click', () => {
-      currentYear++;
-      yearEl.textContent = currentYear;
-      renderMonths();
-    });
-  }
-
-  function toggleMonthPicker() {
-    const dropdown = document.getElementById('monthPickerDropdown');
-    if (!dropdown) return;
-    dropdown.classList.toggle('show');
-  }
-
-  // ---- Tabs (integrado con swipe.js) ----
-  function setupTabs() {
-    const tabButtons = Array.from(document.querySelectorAll('.tab-btn'));
-    const tabSections = Array.from(document.querySelectorAll('.tab-section'));
-
-    window.activateTab = function(tabName) {
-      tabButtons.forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.tabTarget === tabName);
+    if (overlay) {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeConfirm();
       });
-      tabSections.forEach(sec => {
-        sec.classList.toggle('active', sec.dataset.tab === tabName);
-      });
-    };
-
-    tabButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const target = btn.dataset.tabTarget;
-        if (!target) return;
-        window.activateTab(target);
-      });
-    });
-  }
-
-  // ---- Resumen ----
-  function getIngresosMes(ym) {
-    const { year, month } = parseYM(ym);
-    const base = (state.ingresosBase.juan || 0) + (state.ingresosBase.saray || 0) + (state.ingresosBase.otros || 0);
-
-    const extra = state.ingresosPuntuales
-      .filter(i => i.fecha && i.fecha.startsWith(`${year}-${month.toString().padStart(2,'0')}`))
-      .reduce((sum, i) => sum + (i.importe || 0), 0);
-
-    return base + extra;
-  }
-
-  function isFijoActivoEnMes(fijo, ym) {
-    if (!fijo.endMonth) return true;
-    return fijo.endMonth >= ym;
-  }
-
-  function getGastosFijosMes(ym) {
-    return state.fijos
-      .filter(f => isFijoActivoEnMes(f, ym))
-      .reduce((sum, f) => sum + (f.importe || 0), 0);
-  }
-
-  function getGastosVariablesMes(ym) {
-    const { year, month } = parseYM(ym);
-    const prefix = `${year}-${month.toString().padStart(2,'0')}`;
-    return state.gastos
-      .filter(g => g.fecha && g.fecha.startsWith(prefix))
-      .reduce((sum, g) => sum + (g.importe || 0), 0);
-  }
-
-  function updateResumen() {
-    const ingEl = document.getElementById('sumIngresos');
-    const fijosEl = document.getElementById('sumFijos');
-    const varsEl = document.getElementById('sumVariables');
-    const balEl = document.getElementById('sumBalance');
-
-    const ing = getIngresosMes(currentYM);
-    const f = getGastosFijosMes(currentYM);
-    const v = getGastosVariablesMes(currentYM);
-    const bal = ing - f - v;
-
-    if (ingEl) ingEl.textContent = formatMoney(ing);
-    if (fijosEl) fijosEl.textContent = formatMoney(f);
-    if (varsEl) varsEl.textContent = formatMoney(v);
-    if (balEl) {
-      balEl.textContent = formatMoney(bal);
-      balEl.parentElement.classList.toggle('summary-card-balance', true);
     }
   }
 
-  // ---- Ingresos base + puntuales ----
-  function setupIngresosBaseForm() {
-    const form = document.getElementById('formIngresosBase');
-    const juan = document.getElementById('ingJuan');
-    const saray = document.getElementById('ingSaray');
-    const otros = document.getElementById('ingOtros');
-    if (!form || !juan || !saray || !otros) return;
-
-    juan.value = state.ingresosBase.juan || 0;
-    saray.value = state.ingresosBase.saray || 0;
-    otros.value = state.ingresosBase.otros || 0;
-
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      state.ingresosBase = {
-        juan: parseFloat(juan.value) || 0,
-        saray: parseFloat(saray.value) || 0,
-        otros: parseFloat(otros.value) || 0
-      };
-      saveState();
-      updateResumen();
-      showToast('Ingresos base guardados.');
-    });
-  }
-
-  function setupIngresoPuntualForm() {
-    const form = document.getElementById('formIngresoPuntual');
-    if (!form) return;
-
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const fechaEl = document.getElementById('ingPuntualFecha');
-      const descEl = document.getElementById('ingPuntualDesc');
-      const impEl = document.getElementById('ingPuntualImporte');
-
-      let fecha = fechaEl.value;
-      if (!fecha) {
-        const { year, month } = parseYM(currentYM);
-        const today = new Date();
-        const d = today.getDate().toString().padStart(2,'0');
-        fecha = `${year}-${month.toString().padStart(2,'0')}-${d}`;
-      }
-
-      const desc = descEl.value.trim() || 'Ingreso';
-      const importe = parseFloat(impEl.value) || 0;
-      if (!importe) {
-        showToast('Importe debe ser mayor que 0.');
-        return;
-      }
-
-      const id = crypto.randomUUID?.() || (Date.now().toString(36)+Math.random().toString(36).slice(2));
-      state.ingresosPuntuales.push({ id, fecha, desc, importe });
-      saveState();
-      descEl.value = '';
-      impEl.value = '';
-      renderIngresosPuntuales();
-      updateResumen();
-      showToast('Ingreso puntual añadido.');
-    });
-  }
-
-  function renderIngresosPuntuales() {
-    const cont = document.getElementById('listaIngresosPuntuales');
-    if (!cont) return;
-    cont.innerHTML = '';
-
-    const { year, month } = parseYM(currentYM);
-    const prefix = `${year}-${month.toString().padStart(2,'0')}`;
-
-    const lista = state.ingresosPuntuales.filter(i => i.fecha && i.fecha.startsWith(prefix));
-
-    if (!lista.length) {
-      cont.innerHTML = '<p class="section-hint small">No hay ingresos puntuales este mes.</p>';
-      return;
-    }
-
-    lista
-      .sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''))
-      .forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'pill-item';
-
-        const main = document.createElement('div');
-        main.className = 'pill-main';
-        const l1 = document.createElement('div');
-        l1.className = 'pill-line1';
-        l1.textContent = item.desc || 'Ingreso';
-        const l2 = document.createElement('div');
-        l2.className = 'pill-line2';
-        l2.textContent = `${item.fecha || ''} · ${formatMoney(item.importe || 0)}`;
-        main.append(l1,l2);
-
-        const actions = document.createElement('div');
-        actions.className = 'pill-actions';
-
-        const btnEdit = document.createElement('button');
-        btnEdit.className = 'btn btn-edit';
-        btnEdit.textContent = '✏️';
-        btnEdit.addEventListener('click', () => {
-          openEditModal('ingresoPuntual', item);
-        });
-
-        const btnDel = document.createElement('button');
-        btnDel.className = 'btn-danger-chip';
-        btnDel.textContent = '🗑️';
-        btnDel.addEventListener('click', () => {
-          openConfirm('¿Eliminar este ingreso puntual?', () => {
-            state.ingresosPuntuales = state.ingresosPuntuales.filter(i => i.id !== item.id);
-            saveState();
-            renderIngresosPuntuales();
-            updateResumen();
-          });
-        });
-
-        actions.append(btnEdit, btnDel);
-        div.append(main, actions);
-        cont.appendChild(div);
-      });
-  }
-
-  // ---- Gastos fijos ----
-  function setupFijosForm() {
-    const form = document.getElementById('formGastoFijo');
-    const chips = document.getElementById('fijoCategoriaChips');
-    if (!form || !chips) return;
-
-    chips.addEventListener('click', (e) => {
-      const btn = e.target.closest('.chip-select');
-      if (!btn) return;
-      fixedSelectedCategory = btn.dataset.cat;
-      Array.from(chips.querySelectorAll('.chip-select')).forEach(c => c.classList.remove('chip-active'));
-      btn.classList.add('chip-active');
-    });
-
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const nombreEl = document.getElementById('fijoNombre');
-      const impEl = document.getElementById('fijoImporte');
-      const endEl = document.getElementById('fijoEndMonth');
-
-      const nombre = nombreEl.value.trim();
-      const importe = parseFloat(impEl.value) || 0;
-      const endMonth = endEl.value || null;
-
-      if (!nombre || !importe) {
-        showToast('Rellena concepto e importe.');
-        return;
-      }
-
-      const id = crypto.randomUUID?.() || (Date.now().toString(36)+Math.random().toString(36).slice(2));
-      state.fijos.push({
-        id,
-        nombre,
-        importe,
-        categoria: fixedSelectedCategory || 'Varios',
-        endMonth
-      });
-
-      saveState();
-      nombreEl.value = '';
-      impEl.value = '';
-      endEl.value = '';
-
-      renderFijos();
-      updateResumen();
-      showToast('Gasto fijo añadido.');
-    });
-
-    const filtro = document.getElementById('fijoFiltroChips');
-    filtro?.addEventListener('click',(e)=>{
-      const btn = e.target.closest('.chip-filter');
-      if (!btn) return;
-      fixedFilter = btn.dataset.filter;
-      Array.from(filtro.querySelectorAll('.chip-filter')).forEach(b => b.classList.remove('chip-active'));
-      btn.classList.add('chip-active');
-      renderFijos();
-    });
-
-    const btnInforme = document.getElementById('btnVerInformeFijos');
-    btnInforme?.addEventListener('click', openFijosReport);
-  }
-
-  function renderFijos() {
-    const tbody = document.getElementById('tablaFijosBody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-
-    const lista = state.fijos
-      .filter(f => fixedFilter === 'Todos' || f.categoria === fixedFilter)
-      .sort((a,b) => (a.nombre||'').localeCompare(b.nombre||''));
-
-    if (!lista.length) {
-      const tr = document.createElement('tr');
-      const td = document.createElement('td');
-      td.colSpan = 5;
-      td.innerHTML = '<span class="section-hint small">No hay gastos fijos almacenados.</span>';
-      tr.appendChild(td);
-      tbody.appendChild(tr);
-      return;
-    }
-
-    lista.forEach(f => {
-      const tr = document.createElement('tr');
-
-      const tdNombre = document.createElement('td');
-      tdNombre.textContent = f.nombre || '';
-
-      const tdCat = document.createElement('td');
-      tdCat.textContent = f.categoria || 'Varios';
-
-      const tdImp = document.createElement('td');
-      tdImp.textContent = formatMoney(f.importe || 0);
-
-      const tdEnd = document.createElement('td');
-      tdEnd.textContent = f.endMonth || '—';
-
-      const tdAcc = document.createElement('td');
-      tdAcc.style.whiteSpace = 'nowrap';
-
-      const btnEdit = document.createElement('button');
-      btnEdit.className = 'btn btn-edit';
-      btnEdit.textContent = '✏️';
-      btnEdit.addEventListener('click', () => openEditModal('fijo', f));
-
-      const btnDel = document.createElement('button');
-      btnDel.className = 'btn-danger-chip';
-      btnDel.textContent = '🗑️';
-      btnDel.addEventListener('click', () => {
-        openConfirm('¿Eliminar este gasto fijo?', () => {
-          state.fijos = state.fijos.filter(x => x.id !== f.id);
-          saveState();
-          renderFijos();
-          updateResumen();
-        });
-      });
-
-      tdAcc.append(btnEdit, btnDel);
-      tr.append(tdNombre, tdCat, tdImp, tdEnd, tdAcc);
-      tbody.appendChild(tr);
-    });
-  }
-
-  // ---- Informe fijos ----
-  function openFijosReport() {
-    const overlay = document.getElementById('reportModal');
-    const chartEl = document.getElementById('fixedReportChart');
-    const totalsEl = document.getElementById('fixedReportTotals');
-    const listEl = document.getElementById('fixedReportList');
-    const grandEl = document.getElementById('fixedReportGrandTotal');
-    if (!overlay || !chartEl || !totalsEl || !listEl || !grandEl) return;
-
-    const activos = state.fijos.filter(f => isFijoActivoEnMes(f, currentYM));
-    const porCat = {};
-    activos.forEach(f => {
-      const cat = f.categoria || 'Varios';
-      porCat[cat] = (porCat[cat] || 0) + (f.importe || 0);
-    });
-
-    const labels = Object.keys(porCat);
-    const data = labels.map(l => porCat[l]);
-
-    if (fixedChart) fixedChart.destroy();
-    fixedChart = new Chart(chartEl.getContext('2d'), {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
-          data,
-          borderRadius: 8
-        }]
-      },
-      options: {
-        indexAxis: 'y',
-        plugins: {
-          legend: { display: false }
-        },
-        scales: {
-          x: { ticks: { callback: v => formatMoney(v) } }
-        }
-      }
-    });
-
-    totalsEl.innerHTML = '';
-    let totalGeneral = 0;
-    labels.forEach(cat => {
-      const val = porCat[cat];
-      totalGeneral += val;
-      const chip = document.createElement('div');
-      chip.className = 'chip chip-active';
-      chip.textContent = `${cat}: ${formatMoney(val)}`;
-      totalsEl.appendChild(chip);
-    });
-    grandEl.textContent = formatMoney(totalGeneral);
-
-    listEl.innerHTML = '';
-    labels.forEach(cat => {
-      const grupo = document.createElement('div');
-      grupo.className = 'report-category-group';
-      const t = document.createElement('div');
-      t.className = 'report-category-title';
-      t.textContent = cat;
-      const ul = document.createElement('div');
-      ul.className = 'report-category-list';
-      activos
-        .filter(f => (f.categoria || 'Varios') === cat)
-        .forEach(f => {
-          const line = document.createElement('div');
-          line.textContent = `• ${f.nombre} · ${formatMoney(f.importe || 0)}${f.endMonth ? ` (hasta ${f.endMonth})` : ''}`;
-          ul.appendChild(line);
-        });
-      grupo.append(t, ul);
-      listEl.appendChild(grupo);
-    });
-
-    overlay.classList.add('show');
-  }
-
-  function setupFijosReportModal() {
-    const overlay = document.getElementById('reportModal');
-    const btnClose = document.getElementById('reportClose');
-    const btnOk = document.getElementById('reportOk');
-    if (!overlay) return;
-
-    const close = () => overlay.classList.remove('show');
-
-    btnClose?.addEventListener('click', close);
-    btnOk?.addEventListener('click', close);
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) close();
-    });
-  }
-
-  // ---- Gastos variables ----
-  function setupGastoVariableForm() {
-    const form = document.getElementById('formGastoVariable');
-    if (!form) return;
-
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const fechaEl = document.getElementById('varFecha');
-      const catEl = document.getElementById('varCategoria');
-      const descEl = document.getElementById('varDesc');
-      const impEl = document.getElementById('varImporte');
-
-      let fecha = fechaEl.value;
-      if (!fecha) {
-        const { year, month } = parseYM(currentYM);
-        const today = new Date();
-        const d = today.getDate().toString().padStart(2,'0');
-        fecha = `${year}-${month.toString().padStart(2,'0')}-${d}`;
-      }
-
-      const categoria = catEl.value.trim() || 'Sin categoría';
-      const desc = descEl.value.trim() || categoria;
-      const importe = parseFloat(impEl.value) || 0;
-      if (!importe) {
-        showToast('Importe debe ser mayor que 0.');
-        return;
-      }
-
-      const id = crypto.randomUUID?.() || (Date.now().toString(36)+Math.random().toString(36).slice(2));
-      state.gastos.push({ id, fecha, categoria, desc, importe });
-      saveState();
-
-      catEl.value = '';
-      descEl.value = '';
-      impEl.value = '';
-
-      renderGastosVariables();
-      renderSobres();
-      updateResumen();
-      showToast('Gasto añadido.');
-    });
-  }
-
-  function renderGastosVariables() {
-    const cont = document.getElementById('listaGastosVariables');
-    if (!cont) return;
-    cont.innerHTML = '';
-
-    const { year, month } = parseYM(currentYM);
-    const prefix = `${year}-${month.toString().padStart(2,'0')}`;
-
-    const lista = state.gastos
-      .filter(g => g.fecha && g.fecha.startsWith(prefix))
-      .sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
-
-    if (!lista.length) {
-      cont.innerHTML = '<p class="section-hint small">No hay gastos variables este mes.</p>';
-      return;
-    }
-
-    lista.forEach(g => {
-      const div = document.createElement('div');
-      div.className = 'expense-item';
-
-      const main = document.createElement('div');
-      main.className = 'expense-main';
-
-      const l1 = document.createElement('div');
-      l1.className = 'expense-line1';
-      l1.textContent = g.desc || g.categoria || 'Gasto';
-
-      const l2 = document.createElement('div');
-      l2.className = 'expense-line2';
-      l2.textContent = `${g.fecha || ''} · ${g.categoria || ''}`;
-
-      main.append(l1,l2);
-
-      const actions = document.createElement('div');
-      actions.className = 'expense-actions';
-
-      const impSpan = document.createElement('div');
-      impSpan.className = 'amount-neg';
-      impSpan.textContent = formatMoney(g.importe || 0);
-
-      const btnEdit = document.createElement('button');
-      btnEdit.className = 'btn btn-edit';
-      btnEdit.textContent = '✏️';
-      btnEdit.addEventListener('click', ()=> openEditModal('gasto', g));
-
-      const btnDel = document.createElement('button');
-      btnDel.className = 'btn-danger-chip';
-      btnDel.textContent = '🗑️';
-      btnDel.addEventListener('click', () => {
-        openConfirm('¿Eliminar este gasto?', () => {
-          state.gastos = state.gastos.filter(x => x.id !== g.id);
-          saveState();
-          renderGastosVariables();
-          renderSobres();
-          updateResumen();
-        });
-      });
-
-      actions.append(impSpan, btnEdit, btnDel);
-      div.append(main, actions);
-      cont.appendChild(div);
-    });
-  }
-
-  // ---- Sobres ----
-  function setupSobreForm() {
-    const form = document.getElementById('formSobre');
-    if (!form) return;
-
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const nomEl = document.getElementById('sobreNombre');
-      const impEl = document.getElementById('sobreImporte');
-
-      const nombre = nomEl.value.trim();
-      const importe = parseFloat(impEl.value) || 0;
-
-      if (!nombre || !importe) {
-        showToast('Rellena nombre e importe.');
-        return;
-      }
-
-      const id = crypto.randomUUID?.() || (Date.now().toString(36)+Math.random().toString(36).slice(2));
-      state.sobres.push({ id, nombre, presupuesto: importe });
-      saveState();
-      nomEl.value = '';
-      impEl.value = '';
-      renderSobres();
-      showToast('Sobre añadido.');
-    });
-  }
-
-  function getGastoEnCategoriaMes(cat, ym) {
-    const { year, month } = parseYM(ym);
-    const prefix = `${year}-${month.toString().padStart(2,'0')}`;
-    return state.gastos
-      .filter(g => g.fecha && g.fecha.startsWith(prefix) && (g.categoria || '').toLowerCase() === cat.toLowerCase())
-      .reduce((sum, g) => sum + (g.importe || 0), 0);
-  }
-
-  function renderSobres() {
-    const cont = document.getElementById('listaSobres');
-    if (!cont) return;
-    cont.innerHTML = '';
-
-    if (!state.sobres.length) {
-      cont.innerHTML = '<p class="section-hint small">No hay sobres. Crea alguno para controlar categorías.</p>';
-      return;
-    }
-
-    state.sobres.forEach(s => {
-      const gastado = getGastoEnCategoriaMes(s.nombre, currentYM);
-      const ratio = s.presupuesto > 0 ? (gastado / s.presupuesto) : 0;
-      const pct = Math.min(100, Math.round(ratio * 100));
-
-      const card = document.createElement('div');
-      card.className = 'budget-card';
-
-      const header = document.createElement('div');
-      header.className = 'budget-card-header';
-
-      const name = document.createElement('div');
-      name.className = 'budget-name';
-      name.textContent = s.nombre;
-
-      const btns = document.createElement('div');
-      const btnEdit = document.createElement('button');
-      btnEdit.className = 'btn btn-edit';
-      btnEdit.textContent = '✏️';
-      btnEdit.addEventListener('click', () => openEditModal('sobre', s));
-
-      const btnDel = document.createElement('button');
-      btnDel.className = 'btn-danger-chip';
-      btnDel.textContent = '🗑️';
-      btnDel.addEventListener('click', () => {
-        openConfirm('¿Eliminar este sobre?', () => {
-          state.sobres = state.sobres.filter(x => x.id !== s.id);
-          saveState();
-          renderSobres();
-        });
-      });
-
-      btns.append(btnEdit,btnDel);
-      header.append(name,btns);
-
-      const amounts = document.createElement('div');
-      amounts.className = 'budget-amounts';
-
-      const a1 = document.createElement('div');
-      a1.className = 'budget-amount-item';
-      a1.innerHTML = `<div class="budget-amount-label">Presupuesto</div><div class="budget-amount-value">${formatMoney(s.presupuesto || 0)}</div>`;
-      const a2 = document.createElement('div');
-      a2.className = 'budget-amount-item';
-      a2.innerHTML = `<div class="budget-amount-label">Gastado</div><div class="budget-amount-value">${formatMoney(gastado)}</div>`;
-      amounts.append(a1,a2);
-
-      const bar = document.createElement('div');
-      bar.className = 'budget-progress-bar';
-      const fill = document.createElement('div');
-      fill.className = 'budget-progress-fill';
-      fill.style.width = pct + '%';
-      if (ratio > 1) fill.classList.add('over');
-      bar.appendChild(fill);
-
-      const status = document.createElement('div');
-      status.className = 'budget-status';
-      if (ratio <= 0.8) {
-        status.classList.add('good');
-        status.textContent = `Vas bien (${pct}% usado)`;
-      } else if (ratio <= 1) {
-        status.classList.add('warning');
-        status.textContent = `Casi al límite (${pct}% usado)`;
-      } else {
-        status.classList.add('over');
-        status.textContent = `Presupuesto superado (${pct}% usado)`;
-      }
-
-      card.append(header, amounts, bar, status);
-      cont.appendChild(card);
-    });
-  }
-
-  // ---- Huchas ----
-  function setupHuchasForm() {
-    const form = document.getElementById('formHucha');
-    if (!form) return;
-
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const nomEl = document.getElementById('huchaNombre');
-      const objEl = document.getElementById('huchaObjetivo');
-
-      const nombre = nomEl.value.trim();
-      const objetivo = parseFloat(objEl.value) || 0;
-      if (!nombre || !objetivo) {
-        showToast('Rellena nombre y objetivo.');
-        return;
-      }
-
-      const id = crypto.randomUUID?.() || (Date.now().toString(36)+Math.random().toString(36).slice(2));
-      state.huchas.push({ id, nombre, objetivo, saldo: 0 });
-      saveState();
-      nomEl.value = '';
-      objEl.value = '';
-      renderHuchas();
-      showToast('Hucha creada.');
-    });
-  }
-
-  function renderHuchas() {
-    const cont = document.getElementById('listaHuchas');
-    if (!cont) return;
-    cont.innerHTML = '';
-
-    if (!state.huchas.length) {
-      cont.innerHTML = '<p class="section-hint small">No hay huchas creadas.</p>';
-      return;
-    }
-
-    state.huchas.forEach(h => {
-      const card = document.createElement('div');
-      card.className = 'budget-card';
-
-      const header = document.createElement('div');
-      header.className = 'budget-card-header';
-
-      const name = document.createElement('div');
-      name.className = 'budget-name';
-      name.textContent = h.nombre;
-
-      const btns = document.createElement('div');
-
-      const btnEdit = document.createElement('button');
-      btnEdit.className = 'btn btn-edit';
-      btnEdit.textContent = '✏️';
-      btnEdit.addEventListener('click', ()=> openEditModal('hucha', h));
-
-      const btnDel = document.createElement('button');
-      btnDel.className = 'btn-danger-chip';
-      btnDel.textContent = '🗑️';
-      btnDel.addEventListener('click', () => {
-        openConfirm('¿Eliminar esta hucha?', () => {
-          state.huchas = state.huchas.filter(x => x.id !== h.id);
-          saveState();
-          renderHuchas();
-        });
-      });
-
-      btns.append(btnEdit,btnDel);
-      header.append(name,btns);
-
-      const amounts = document.createElement('div');
-      amounts.className = 'budget-amounts';
-
-      const a1 = document.createElement('div');
-      a1.className = 'budget-amount-item';
-      a1.innerHTML = `<div class="budget-amount-label">Objetivo</div><div class="budget-amount-value">${formatMoney(h.objetivo || 0)}</div>`;
-      const a2 = document.createElement('div');
-      a2.className = 'budget-amount-item';
-      a2.innerHTML = `<div class="budget-amount-label">Saldo</div><div class="budget-amount-value">${formatMoney(h.saldo || 0)}</div>`;
-      amounts.append(a1,a2);
-
-      const ratio = h.objetivo > 0 ? (h.saldo / h.objetivo) : 0;
-      const pct = Math.min(100, Math.round(ratio * 100));
-
-      const bar = document.createElement('div');
-      bar.className = 'budget-progress-bar';
-      const fill = document.createElement('div');
-      fill.className = 'budget-progress-fill';
-      fill.style.width = pct + '%';
-      bar.appendChild(fill);
-
-      const status = document.createElement('div');
-      status.className = 'budget-status';
-      if (ratio < 1) {
-        status.classList.add('good');
-        status.textContent = `Llevas ${pct}% del objetivo`;
-      } else {
-        status.classList.add('over');
-        status.textContent = '¡Objetivo alcanzado o superado!';
-      }
-
-      const acciones = document.createElement('div');
-      acciones.className = 'chip-row';
-      const btnAdd = document.createElement('button');
-      btnAdd.className = 'chip';
-      btnAdd.textContent = '➕ Aportar';
-      btnAdd.addEventListener('click', () => {
-        const val = prompt('Cantidad a aportar a la hucha:', '0');
-        const cant = parseFloat(val);
-        if (!cant) return;
-        h.saldo = (h.saldo || 0) + cant;
-        saveState();
-        renderHuchas();
-      });
-      const btnSub = document.createElement('button');
-      btnSub.className = 'chip';
-      btnSub.textContent = '➖ Retirar';
-      btnSub.addEventListener('click', () => {
-        const val = prompt('Cantidad a retirar de la hucha:', '0');
-        const cant = parseFloat(val);
-        if (!cant) return;
-        h.saldo = (h.saldo || 0) - cant;
-        saveState();
-        renderHuchas();
-      });
-      acciones.append(btnAdd,btnSub);
-
-      card.append(header, amounts, bar, status, acciones);
-      cont.appendChild(card);
-    });
-  }
-
-  // ---- Notas por mes ----
-  function setupNotas() {
-    const area = document.getElementById('notasMes');
-    if (!area) return;
-
-    const sync = () => {
-      area.value = state.notasPorMes[currentYM] || '';
-    };
-
-    area.addEventListener('input', () => {
-      state.notasPorMes[currentYM] = area.value;
-      saveState();
-    });
-
-    sync();
-  }
-  // Normaliza el JSON importado para que tenga siempre el mismo esquema interno
-  function normalizeImportedState(raw) {
-    if (!raw || typeof raw !== 'object') return null;
-
-    const isLegacy =
-      raw.baseConfig ||
-      raw.gastosFijos ||
-      raw.notasByMonth ||
-      (raw.sobres && !Array.isArray(raw.sobres));
-
-    const makeId = () =>
-      crypto.randomUUID?.() ||
-      (Date.now().toString(36) + Math.random().toString(36).slice(2));
-
-    if (isLegacy) {
-      // FORMATO ANTIGUO (v7)
-      const baseConfig = raw.baseConfig || {};
-      const legacyFijos = raw.gastosFijos || [];
-
-      // sobres venían como objeto { nombre: presupuesto }
-      let sobresArr = [];
-      if (Array.isArray(raw.sobres)) {
-        sobresArr = raw.sobres;
-      } else if (raw.sobres && typeof raw.sobres === 'object') {
-        sobresArr = Object.entries(raw.sobres).map(([nombre, presupuesto]) => ({
-          id: makeId(),
-          nombre,
-          presupuesto: Number(presupuesto) || 0
-        }));
-      }
-
-      const fijosArr = legacyFijos.map(f => ({
-        id: f.id || makeId(),
-        nombre: f.nombre || '',
-        importe: Number(f.importe) || 0,
-        categoria: f.categoria || 'Varios',
-        endMonth: f.endMonth || null
-      }));
-
-      return {
-        ingresosBase: {
-          juan: Number(baseConfig.juan) || 0,
-          saray: Number(baseConfig.saray) || 0,
-          otros: Number(baseConfig.otros) || 0
-        },
-        fijos: fijosArr,
-        sobres: sobresArr,
-        huchas: raw.huchas || [],
-        ingresosPuntuales: raw.ingresosPuntuales || [],
-        gastos: raw.gastos || [],
-        notasPorMes: raw.notasPorMes || raw.notasByMonth || {}
-      };
-    }
-
-    // FORMATO NUEVO (v2+)
-    return {
-      ingresosBase: raw.ingresosBase || state.ingresosBase,
-      fijos: raw.fijos || [],
-      sobres: raw.sobres || [],
-      huchas: raw.huchas || [],
-      ingresosPuntuales: raw.ingresosPuntuales || [],
-      gastos: raw.gastos || [],
-      notasPorMes: raw.notasPorMes || {}
-    };
-  }
-  // ---- Export / Import JSON (soporta formato antiguo y nuevo) ----
-  function setupJSONImportExport() {
-    const btnExp = document.getElementById('btnExportJSON');
-    const inputImport = document.getElementById('inputImportJSON');
-
-    // Export
-    btnExp?.addEventListener('click', () => {
-      const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `economia-familiar-${currentYM}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    });
-
-    // Import
-    inputImport?.addEventListener('change', (e) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const raw = JSON.parse(reader.result);
-          const imported = normalizeImportedState(raw);
-          if (!imported) {
-            showToast('El archivo no tiene un formato válido.');
-            return;
-          }
-
-          const overwrite = confirm(
-            '¿Quieres sobrescribir todos los datos actuales con el archivo importado?\n\nAceptar = Sobrescribir todo\nCancelar = Intentar fusionar sin borrar lo existente.'
-          );
-
-          if (overwrite) {
-            state = {
-              ingresosBase: imported.ingresosBase || { juan: 0, saray: 0, otros: 0 },
-              fijos: imported.fijos || [],
-              sobres: imported.sobres || [],
-              huchas: imported.huchas || [],
-              ingresosPuntuales: imported.ingresosPuntuales || [],
-              gastos: imported.gastos || [],
-              notasPorMes: imported.notasPorMes || {}
-            };
-          } else {
-            const mergeById = (currentArr, newArr) => {
-              const map = new Map();
-              (currentArr || []).forEach(item => map.set(String(item.id), item));
-              (newArr || []).forEach(item => {
-                const key = String(item.id);
-                if (map.has(key)) {
-                  const replace = confirm(
-                    'Se ha encontrado un elemento con el mismo ID.\n¿Quieres sobrescribir el existente por el importado?\n\nAceptar = Sobrescribir\nCancelar = Mantener el existente.'
-                  );
-                  if (replace) map.set(key, item);
-                } else {
-                  map.set(key, item);
-                }
-              });
-              return Array.from(map.values());
-            };
-
-            state.ingresosBase = imported.ingresosBase || state.ingresosBase;
-            state.fijos = mergeById(state.fijos, imported.fijos || []);
-            state.sobres = mergeById(state.sobres, imported.sobres || []);
-            state.huchas = mergeById(state.huchas, imported.huchas || []);
-            state.ingresosPuntuales = mergeById(state.ingresosPuntuales, imported.ingresosPuntuales || []);
-            state.gastos = mergeById(state.gastos, imported.gastos || []);
-            state.notasPorMes = {
-              ...(state.notasPorMes || {}),
-              ...(imported.notasPorMes || {})
-            };
-          }
-
-          // Normalizar categorías de fijos tras importar
-          if (Array.isArray(state.fijos)) {
-            state.fijos = state.fijos.map(f => ({
-              ...f,
-              categoria: f.categoria || 'Varios'
-            }));
-          }
-
-          saveState();
-          loadMonthBoundUI();
-          showToast('Datos importados correctamente.');
-        } catch (err) {
-          console.error(err);
-          showToast('Error al importar JSON.');
-        } finally {
-          e.target.value = '';
-        }
-      };
-      reader.readAsText(file);
-    });
-  }
-
-  // ---- Import CSV Caixa ----
-  function setupCSVImport() {
-    const input = document.getElementById('inputImportCSV');
-    if (!input) return;
-
-    input.addEventListener('change', (e) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const text = reader.result;
-          importCaixaCSV(text);
-        } catch {
-          showToast('Error al leer CSV.');
-        } finally {
-          e.target.value = '';
-        }
-      };
-      reader.readAsText(file, 'ISO-8859-1');
-    });
-  }
-
-  function importCaixaCSV(text) {
-    const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
-    if (!lines.length) {
-      showToast('CSV vacío.');
-      return;
-    }
-
-    // Saltamos cabecera si detecta "Concepto;Fecha;Importe"
-    let start = 0;
-    if (/concepto/i.test(lines[0])) start = 1;
-
-    let contIng = 0;
-    let contGas = 0;
-
-    for (let i = start; i < lines.length; i++) {
-      const parts = lines[i].split(';');
-      if (parts.length < 4) continue;
-      let [concepto, fecha, importeStr] = parts;
-      concepto = concepto.trim() || 'Movimiento';
-      const imp = parseFloat(importeStr.replace(',', '.')) || 0;
-      if (!fecha) continue;
-
-      if (imp > 0) {
-        const id = crypto.randomUUID?.() || (Date.now().toString(36)+Math.random().toString(36).slice(2));
-        state.ingresosPuntuales.push({
-          id,
-          fecha,
-          desc: concepto,
-          importe: imp
-        });
-        contIng++;
-      } else if (imp < 0) {
-        const id = crypto.randomUUID?.() || (Date.now().toString(36)+Math.random().toString(36).slice(2));
-        state.gastos.push({
-          id,
-          fecha,
-          categoria: 'Banco',
-          desc: concepto,
-          importe: Math.abs(imp)
-        });
-        contGas++;
-      }
-    }
-    saveState();
-    loadMonthBoundUI();
-    showToast(`CSV importado: ${contIng} ingresos, ${contGas} gastos.`);
-  }
-
-  // ---- Cargar todo lo que depende del mes ----
-  function loadMonthBoundUI() {
-    updateMonthDisplay();
-    updateResumen();
-    renderIngresosPuntuales();
-    renderFijos();
-    renderGastosVariables();
-    renderSobres();
+  // ----- Render general -----
+  function renderAll() {
+    setupIngresosBase();
+    renderIngresosPuntualesLista();
+    renderFijosTable();
+    renderGastosLista();
+    renderSobresLista();
     renderHuchas();
-    setupNotas();
+    rebuildCategoriasSugerencias();
+    loadNotasMes();
+    updateResumenYChips();
   }
 
-  // ---- Init ----
-  function init() {
+  // ----- Init -----
+  document.addEventListener('DOMContentLoaded', () => {
     loadState();
+
+    const now = new Date();
+    currentYear = now.getFullYear();
+    currentMonth = now.getMonth();
+
+    setupTabs();
+    setupMonthPicker();
     updateMonthDisplay();
 
-    setupMonthNav();
-    setupTabs();
+    const prevBtn = document.getElementById('btnPrevMonth');
+    const nextBtn = document.getElementById('btnNextMonth');
+    if (prevBtn) prevBtn.addEventListener('click', () => changeMonth(-1));
+    if (nextBtn) nextBtn.addEventListener('click', () => changeMonth(1));
 
-    setupConfirmModalEvents();
-    setupEditModalEvents();
-    setupFijosReportModal();
-
-    setupIngresosBaseForm();
-    setupIngresoPuntualForm();
-    setupFijosForm();
-    setupGastoVariableForm();
-    setupSobreForm();
-    setupHuchasForm();
+    setupIngresosBase();
+    setupIngresosPuntuales();
+    setupFijos();
+    setupGastos();
+    setupSobres();
+    setupHuchas();
     setupNotas();
-    setupJSONImportExport();
-    setupCSVImport();
+    setupExportImportJson();
+    setupImportCsv();
+    setupReset();
+    setupEditModalEvents();
+    setupConfirmModalEvents();
 
-    loadMonthBoundUI();
-  }
-
-  document.addEventListener('DOMContentLoaded', init);
+    renderAll();
+  });
 })();
