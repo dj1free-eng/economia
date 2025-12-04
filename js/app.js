@@ -40,7 +40,6 @@ log(">>> app.js INICIADO <<<");
     gastos: [],             // {id, fecha, categoria, desc, importe}
     notasPorMes: {}         // { 'YYYY-MM': 'texto' }
   };
-}
   const monthNames = [
     'Enero','Febrero','Marzo','Abril','Mayo','Junio',
     'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'
