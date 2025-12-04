@@ -1064,6 +1064,31 @@ log(">>> app.js INICIADO <<<");
 
     state = newState;
   }
+    // ----- Reset total -----
+  function setupReset() {
+    const btn = document.getElementById('btnResetAll');
+    if (!btn) return;
+
+    btn.addEventListener('click', () => {
+      openConfirm(
+        'Se borrarán todos los datos de la app en este dispositivo. ¿Seguro?',
+        () => {
+          state = {
+            ingresosBase: { juan: 0, saray: 0, otros: 0 },
+            fijos: [],
+            sobres: [],
+            huchas: [],
+            ingresosPuntuales: [],
+            gastos: [],
+            notasPorMes: {}
+          };
+          saveState();
+          renderAll();
+          showToast('Datos eliminados. Empezamos de cero.');
+        }
+      );
+    });
+  }
 // genérica -----
   function openEditModal(type, data) {
     const overlay = document.getElementById('editModal');
