@@ -40,11 +40,6 @@ log(">>> app.js INICIADO <<<");
     gastos: [],             // {id, fecha, categoria, desc, importe}
     notasPorMes: {}         // { 'YYYY-MM': 'texto' }
   };
-  
-function syncDebugState() {
-  window.__ecoState = state;
-// primera sincronización
-syncDebugState();
 }
   const monthNames = [
     'Enero','Febrero','Marzo','Abril','Mayo','Junio',
@@ -74,8 +69,6 @@ syncDebugState();
     } catch (e) {
       console.error('Error leyendo estado', e);
     }  
-  // 👉 sincronizamos debug después de tener el estado listo
-  syncDebugState();
   }
 
   function monthKey(year, month) {
@@ -1098,7 +1091,6 @@ if (data.notasPorMes && typeof data.notasPorMes === 'object') {
 }
 
 state = newState;
-syncDebugState();     // 👈 AÑADIDO AQUÍ
 
 }
 // ----- Reset total -----
@@ -1119,7 +1111,6 @@ function setupReset() {
           gastos: [],
           notasPorMes: {}
         };
-        syncDebugState();   // 👈 TAMBIÉN AQUÍ
         saveState();
         renderAll();
         showToast('Datos eliminados. Empezamos de cero.');
