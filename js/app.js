@@ -1279,5 +1279,6 @@ console.log(">>> DOMContentLoaded DISPARADO <<<");
     setupConfirmModalEvents();
 
     renderAll();
+    console.log(">>> renderAll() ejecutado <<<");
   });
 })();
