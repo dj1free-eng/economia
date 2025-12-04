@@ -199,21 +199,34 @@
             <div class="card-tag">Fijos</div>
           </div>
           <div class="grid-2">
-            <div>
-              <div class="field-group">
-                <label>Nombre del gasto</label>
-                <input type="text" id="fijoNombre" placeholder="Ej: Alquiler, Luz, Internet..." />
-              </div>
-            </div>
-            <div>
-              <div class="field-group">
-                <label>Importe mensual (€)</label>
-                <input type="number" id="fijoImporte" step="0.01" inputmode="decimal" min="0" placeholder="0.00" />
-              </div>
-              <button class="btn btn-success" id="btnAddFijo">➕ Añadir gasto fijo</button>
-            </div>
+          <div>
+          <div class="field-group">
+          <label>Nombre del gasto</label>
+          <input type="text" id="fijoNombre" placeholder="Ej: Alquiler, Luz, Internet..." />
+        </div>
+          <div class="field-group">
+          <label>Categoría</label>
+          <div class="chips-row" id="fijoCategoriaChips">
+          <button type="button" class="chip chip-small" data-cat="Suministros">💡 Suministros</button>
+          <button type="button" class="chip chip-small" data-cat="Préstamos">💳 Préstamos</button>
+          <button type="button" class="chip chip-small" data-cat="Suscripciones">📺 Suscripciones</button>
+          <button type="button" class="chip chip-small" data-cat="Varios">📦 Varios</button>
+        </div>
+    
+          <!-- aquí guardamos en oculto la categoría seleccionada -->
+      
+          <input type="hidden" id="fijoCategoria" />
+        </div>
+        </div>
+          <div>
+          <div class="field-group">
+          <label>Importe mensual (€)</label>
+          <input type="number" id="fijoImporte" step="0.01" inputmode="decimal" min="0" placeholder="0.00" />
+        </div>
+          <button class="btn btn-success" id="btnAddFijo">➕ Añadir gasto fijo</button>
           </div>
-        </section>
+        </div> 
+      </section>
 
         <section class="card">
           <div class="card-header">
