@@ -1064,7 +1064,7 @@ log(">>> app.js INICIADO <<<");
 
     state = newState;
   }
- genérica -----
+// genérica -----
   function openEditModal(type, data) {
     const overlay = document.getElementById('editModal');
     const titleEl = document.getElementById('modalTitle');
