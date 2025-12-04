@@ -1236,6 +1236,7 @@ console.log(">>> app.js INICIADO <<<");
 
   // ----- Render general -----
   function renderAll() {
+    console.log(">>> renderAll() INICIO <<<");
     setupIngresosBase(); // repinta inputs
     renderIngresosPuntualesLista();
     renderFijosTable();
@@ -1245,6 +1246,7 @@ console.log(">>> app.js INICIADO <<<");
     rebuildCategoriasSugerencias();
     loadNotasMes();
     updateResumenYChips();
+    console.log(">>> renderAll() FIN <<<");
   }
 
   // ----- Init -----
