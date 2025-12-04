@@ -186,61 +186,72 @@
         </section>
       </section>
 
-      <!-- GASTOS FIJOS -->
-      <section class="tab-section" data-tab="fijos">
-        <section class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title">🏠 Añadir gasto fijo</div>
-              <div class="card-subtitle">
-                Gastos recurrentes mensuales: alquiler, luz, internet, seguros, etc.
-              </div>
-            </div>
-            <div class="card-tag">Fijos</div>
-          </div>
-          <div class="grid-2">
-          <div>
-          <div class="field-group">
+ <!-- GASTOS FIJOS -->
+<section class="tab-section" data-tab="fijos">
+  
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">🏠 Añadir gasto fijo</div>
+        <div class="card-subtitle">
+          Gastos recurrentes mensuales: alquiler, luz, internet, seguros, etc.
+        </div>
+      </div>
+      <div class="card-tag">Fijos</div>
+    </div>
+
+    <div class="grid-2">
+      <div>
+        <div class="field-group">
           <label>Nombre del gasto</label>
           <input type="text" id="fijoNombre" placeholder="Ej: Alquiler, Luz, Internet..." />
         </div>
-          <div class="field-group">
+
+        <div class="field-group">
           <label>Categoría</label>
           <div class="chips-row" id="fijoCategoriaChips">
-          <button type="button" class="chip chip-small" data-cat="Suministros">💡 Suministros</button>
-          <button type="button" class="chip chip-small" data-cat="Préstamos">💳 Préstamos</button>
-          <button type="button" class="chip chip-small" data-cat="Suscripciones">📺 Suscripciones</button>
-          <button type="button" class="chip chip-small" data-cat="Varios">📦 Varios</button>
-        </div>
-    
-          <!-- aquí guardamos en oculto la categoría seleccionada -->
-      
+            <button type="button" class="chip chip-small" data-cat="Suministros">💡 Suministros</button>
+            <button type="button" class="chip chip-small" data-cat="Préstamos">💳 Préstamos</button>
+            <button type="button" class="chip chip-small" data-cat="Suscripciones">📺 Suscripciones</button>
+            <button type="button" class="chip chip-small" data-cat="Varios">📦 Varios</button>
+          </div>
+
           <input type="hidden" id="fijoCategoria" />
         </div>
-        </div>
-          <div>
-          <div class="field-group">
+      </div>
+
+      <div>
+        <div class="field-group">
           <label>Importe mensual (€)</label>
           <input type="number" id="fijoImporte" step="0.01" inputmode="decimal" min="0" placeholder="0.00" />
         </div>
-          <button class="btn btn-success" id="btnAddFijo">➕ Añadir gasto fijo</button>
-          </div>
-        </div> 
-      </section>
 
-        <section class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title">📋 Listado de gastos fijos</div>
-              <div class="card-subtitle">
-                Total mensual: <strong id="totalFijosDisplay" style="color: #ef4444;">0 €</strong>
-              </div>
-            </div>
-            <div class="card-tag">Listado</div>
-          </div>
-          <div id="fijosTableContainer"></div>
-        </section>
-      </section>
+        <button class="btn btn-success" id="btnAddFijo">➕ Añadir gasto fijo</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">📋 Listado de gastos fijos</div>
+        <div class="card-subtitle">
+          Total mensual: <strong id="totalFijosDisplay" style="color: #ef4444;">0 €</strong>
+        </div>
+      </div>
+      <div class="card-tag">Listado</div>
+    </div>
+
+    <!-- 🔥 BOTÓN AÑADIDO AQUÍ -->
+    <button id="btnInformeFijos" class="btn btn-primary" style="margin-bottom: 12px;">
+      Ver Informe
+    </button>
+    <!-- 🔥 FIN -->
+
+    <div id="fijosTableContainer"></div>
+  </section>
+
+</section>
 
       <!-- GASTOS -->
       <section class="tab-section" data-tab="gastos">
