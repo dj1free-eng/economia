@@ -1138,11 +1138,12 @@
     sync();
   }
 
-  // ---- Export / Import JSON ----
+  // ---- Export / Import JSON (CORREGIDO) ----
   function setupJSONImportExport() {
     const btnExp = document.getElementById('btnExportJSON');
     const inputImport = document.getElementById('inputImportJSON');
 
+    // Export
     btnExp?.addEventListener('click', () => {
       const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -1155,23 +1156,80 @@
       URL.revokeObjectURL(url);
     });
 
+    // Import
     inputImport?.addEventListener('change', (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
+
       const reader = new FileReader();
       reader.onload = () => {
         try {
-          const data = JSON.parse(reader.result);
-          state = Object.assign(state, data || {});
-          // remigrar categorias si hiciera falta
-          if (Array.isArray(state.fijos)) {
-            state.fijos = state.fijos.map(f => ({ ...f, categoria: f.categoria || 'Varios' }));
+          const imported = JSON.parse(reader.result);
+          if (!imported || typeof imported !== 'object') {
+            showToast('El archivo no tiene un formato válido.');
+            return;
           }
+
+          const overwrite = confirm(
+            '¿Quieres sobrescribir todos los datos actuales con el archivo importado?\n\nAceptar = Sobrescribir todo\nCancelar = Intentar fusionar sin borrar lo existente.'
+          );
+
+          if (overwrite) {
+            state = {
+              ingresosBase: imported.ingresosBase || { juan: 0, saray: 0, otros: 0 },
+              fijos: imported.fijos || [],
+              sobres: imported.sobres || [],
+              huchas: imported.huchas || [],
+              ingresosPuntuales: imported.ingresosPuntuales || [],
+              gastos: imported.gastos || [],
+              notasPorMes: imported.notasPorMes || {}
+            };
+          } else {
+            const mergeById = (currentArr, newArr) => {
+              const map = new Map();
+              (currentArr || []).forEach(item => map.set(String(item.id), item));
+              (newArr || []).forEach(item => {
+                const key = String(item.id);
+                if (map.has(key)) {
+                  const replace = confirm(
+                    'Se ha encontrado un elemento con el mismo ID.\n¿Quieres sobrescribir el existente por el importado?\n\nAceptar = Sobrescribir\nCancelar = Mantener el existente.'
+                  );
+                  if (replace) map.set(key, item);
+                } else {
+                  map.set(key, item);
+                }
+              });
+              return Array.from(map.values());
+            };
+
+            state.ingresosBase = imported.ingresosBase || state.ingresosBase;
+            state.fijos = mergeById(state.fijos, imported.fijos || []);
+            state.sobres = mergeById(state.sobres, imported.sobres || []);
+            state.huchas = mergeById(state.huchas, imported.huchas || []);
+            state.ingresosPuntuales = mergeById(state.ingresosPuntuales, imported.ingresosPuntuales || []);
+            state.gastos = mergeById(state.gastos, imported.gastos || []);
+            state.notasPorMes = {
+              ...(state.notasPorMes || {}),
+              ...(imported.notasPorMes || {})
+            };
+          }
+
+          // Normalizar categorías de fijos tras importar
+          if (Array.isArray(state.fijos)) {
+            state.fijos = state.fijos.map(f => ({
+              ...f,
+              categoria: f.categoria || 'Varios'
+            }));
+          }
+
           saveState();
           loadMonthBoundUI();
           showToast('Datos importados correctamente.');
-        } catch {
+        } catch (err) {
+          console.error(err);
           showToast('Error al importar JSON.');
+        } finally {
+          e.target.value = '';
         }
       };
       reader.readAsText(file);
@@ -1193,6 +1251,8 @@
           importCaixaCSV(text);
         } catch {
           showToast('Error al leer CSV.');
+        } finally {
+          e.target.value = '';
         }
       };
       reader.readAsText(file, 'ISO-8859-1');
