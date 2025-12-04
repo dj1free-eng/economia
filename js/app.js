@@ -1,7 +1,33 @@
 
 (() => {
   'use strict';
-console.log(">>> app.js INICIADO <<<");
+  // Consola interna
+function log(msg) {
+  try {
+    const panel = document.getElementById('internalConsole');
+    if (panel) {
+      const time = new Date().toISOString().slice(11,19);
+      panel.innerHTML += "[" + time + "] " + msg + "<br>";
+      panel.scrollTop = panel.scrollHeight;
+    }
+  } catch (e) {}
+  console.log(msg);
+}
+
+window.log = log;
+
+// Activar / desactivar consola
+document.addEventListener("DOMContentLoaded", () => {
+  const toggle = document.getElementById("consoleToggle");
+  const panel = document.getElementById("internalConsole");
+
+  if (toggle) {
+    toggle.addEventListener("click", () => {
+      panel.style.display = panel.style.display === "none" ? "block" : "none";
+    });
+  }
+});
+log(">>> app.js INICIADO <<<");
   // ----- Helpers -----
   const STORAGE_KEY = 'ecoApp_v11c_state';
 
@@ -1251,15 +1277,16 @@ console.log(">>> app.js INICIADO <<<");
 
   // ----- Init -----
   document.addEventListener('DOMContentLoaded', () => {
-console.log(">>> DOMContentLoaded DISPARADO <<<");  
+
+    log(">>> DOMContentLoaded DISPARADO <<<");  
     loadState();
 
     const now = new Date();
     currentYear = now.getFullYear();
     currentMonth = now.getMonth();
 
-    console.log("Año actual:", currentYear, "Mes actual:", currentMonth);
-    console.log(">>> Ejecutando setup inicial <<<");
+    log("Año actual:", currentYear, "Mes actual:", currentMonth);
+    log(">>> Ejecutando setup inicial <<<");
     setupTabs();
     setupMonthPicker();
     updateMonthDisplay();
@@ -1281,6 +1308,6 @@ console.log(">>> DOMContentLoaded DISPARADO <<<");
     setupConfirmModalEvents();
 
     renderAll();
-    console.log(">>> renderAll() ejecutado <<<");
+    log(">>> renderAll() ejecutado <<<");
   });
 })();
