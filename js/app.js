@@ -442,34 +442,64 @@ list.forEach(f => {
     });
   }
 
-  function setupFijos() {
-    const nombreEl = document.getElementById('fijoNombre');
-    const impEl = document.getElementById('fijoImporte');
-    const btnAdd = document.getElementById('btnAddFijo');
+function setupFijos() {
+  const nombreEl = document.getElementById('fijoNombre');
+  const impEl = document.getElementById('fijoImporte');
+  const btnAdd = document.getElementById('btnAddFijo');
 
-    if (btnAdd) {
-      btnAdd.addEventListener('click', () => {
-        const nombre = nombreEl && nombreEl.value.trim();
-        const importe = Number(impEl && impEl.value);
-        if (!nombre) {
-          showToast('Pon un nombre al gasto fijo.');
-          return;
-        }
-        if (!(importe >= 0)) {
-          showToast('El importe debe ser un número válido.');
-          return;
-        }
-        const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
-        state.fijos.push({ id, nombre, importe });
-        saveState();
-        if (nombreEl) nombreEl.value = '';
-        if (impEl) impEl.value = '';
-        renderFijosTable();
-        updateResumenYChips();
-        showToast('Gasto fijo añadido.');
+  const catHidden = document.getElementById('fijoCategoria');
+  const chipsWrap = document.getElementById('fijoCategoriaChips');
+
+  // Gestión de selección de chips
+  if (chipsWrap && catHidden) {
+    chipsWrap.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.chip');
+      if (!btn) return;
+      const value = btn.dataset.cat || '';
+      catHidden.value = value;
+
+      chipsWrap.querySelectorAll('.chip').forEach(ch => {
+        ch.classList.toggle('chip-selected', ch === btn);
       });
-    }
+    });
   }
+
+  if (btnAdd) {
+    btnAdd.addEventListener('click', () => {
+      const nombre = nombreEl && nombreEl.value.trim();
+      const importe = Number(impEl && impEl.value);
+      const categoria = catHidden && catHidden.value ? catHidden.value : '';
+
+      if (!nombre) {
+        showToast('Pon un nombre al gasto fijo.');
+        return;
+      }
+      if (!categoria) {
+        showToast('Selecciona una categoría.');
+        return;
+      }
+      if (!(importe >= 0)) {
+        showToast('El importe debe ser un número válido.');
+        return;
+      }
+
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+      state.fijos.push({ id, nombre, categoria, importe });
+      saveState();
+
+      if (nombreEl) nombreEl.value = '';
+      if (impEl) impEl.value = '';
+      if (catHidden) catHidden.value = '';
+      if (chipsWrap) {
+        chipsWrap.querySelectorAll('.chip').forEach(ch => ch.classList.remove('chip-selected'));
+      }
+
+      renderFijosTable();
+      updateResumenYChips();
+      showToast('Gasto fijo añadido.');
+    });
+  }
+}
 
   // ----- Gastos variables -----
   function rebuildCategoriasSugerencias() {
@@ -882,9 +912,7 @@ list.forEach(f => {
     });
   }
 
-  // ----- Export / Import JSON -----
-  
-  // ----- Export / Import JSON -----
+ // ----- Export / Import JSON -----
   function setupExportImportJson() {
     const btnExport = document.getElementById('btnExportJson');
     const fileInput = document.getElementById('importFile');
@@ -1100,18 +1128,23 @@ list.forEach(f => {
 
     let html = '';
     if (type === 'fijo') {
-      titleEl.textContent = 'Editar gasto fijo';
-      html = `
-        <div class="field-group">
-          <label>Nombre</label>
-          <input type="text" id="editNombre" value="${data.nombre || ''}" />
-        </div>
-        <div class="field-group">
-          <label>Importe mensual (€)</label>
-          <input type="number" id="editImporte" step="0.01" inputmode="decimal" value="${data.importe}" />
-        </div>
-      `;
-    } else if (type === 'gasto') {
+  titleEl.textContent = 'Editar gasto fijo';
+  html = `
+    <div class="field-group">
+      <label>Nombre</label>
+      <input type="text" id="editNombre" value="${data.nombre || ''}" />
+    </div>
+    <div class="field-group">
+      <label>Categoría (Suministros, Préstamos, Suscripciones, Varios)</label>
+      <input type="text" id="editCategoria" value="${data.categoria || ''}" />
+    </div>
+    <div class="field-group">
+      <label>Importe mensual (€)</label>
+      <input type="number" id="editImporte" step="0.01" inputmode="decimal" value="${data.importe}" />
+    </div>
+  `;
+} 
+    else if (type === 'gasto') {
       titleEl.textContent = 'Editar gasto';
       html = `
         <div class="field-group">
@@ -1203,19 +1236,22 @@ list.forEach(f => {
           closeEditModal();
           return;
         }
-        if (type === 'fijo') {
-          const nombreEl = document.getElementById('editNombre');
-          const impEl = document.getElementById('editImporte');
-          const fijo = state.fijos.find(f => String(f.id) === String(id));
-          if (fijo && nombreEl && impEl) {
-            fijo.nombre = nombreEl.value.trim();
-            fijo.importe = Number(impEl.value) || 0;
-            saveState();
-            renderFijosTable();
-            updateResumenYChips();
-            showToast('Gasto fijo actualizado.');
-          }
-        } else if (type === 'gasto') {
+       if (type === 'fijo') {
+  const nombreEl = document.getElementById('editNombre');
+  const catEl = document.getElementById('editCategoria');
+  const impEl = document.getElementById('editImporte');
+  const fijo = state.fijos.find(f => String(f.id) === String(id));
+  if (fijo && nombreEl && impEl && catEl) {
+    fijo.nombre = nombreEl.value.trim();
+    fijo.categoria = catEl.value.trim() || fijo.categoria;
+    fijo.importe = Number(impEl.value) || 0;
+    saveState();
+    renderFijosTable();
+    updateResumenYChips();
+    showToast('Gasto fijo actualizado.');
+  }
+} 
+       else if (type === 'gasto') {
           const fechaEl = document.getElementById('editFecha');
           const catEl = document.getElementById('editCategoria');
           const descEl = document.getElementById('editDesc');
