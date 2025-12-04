@@ -1127,24 +1127,39 @@ function setupFijos() {
     if (!overlay || !titleEl || !contentEl || !saveBtn) return;
 
     let html = '';
-    if (type === 'fijo') {
+if (type === 'fijo') {
   titleEl.textContent = 'Editar gasto fijo';
   html = `
     <div class="field-group">
       <label>Nombre</label>
       <input type="text" id="editNombre" value="${data.nombre || ''}" />
     </div>
+
     <div class="field-group">
-      <label>Categoría (Suministros, Préstamos, Suscripciones, Varios)</label>
-      <input type="text" id="editCategoria" value="${data.categoria || ''}" />
+      <label>Categoría</label>
+      <div class="chips-row" id="editCategoriaChips">
+        <button type="button"
+                class="chip chip-small ${data.categoria === 'Suministros' ? 'chip-selected' : ''}"
+                data-cat="Suministros">💡 Suministros</button>
+        <button type="button
+                "class="chip chip-small ${data.categoria === 'Préstamos' ? 'chip-selected' : ''}"
+                data-cat="Préstamos">💳 Préstamos</button>
+        <button type="button"
+                class="chip chip-small ${data.categoria === 'Suscripciones' ? 'chip-selected' : ''}"
+                data-cat="Suscripciones">📺 Suscripciones</button>
+        <button type="button"
+                class="chip chip-small ${data.categoria === 'Varios' ? 'chip-selected' : ''}"
+                data-cat="Varios">📦 Varios</button>
+      </div>
+      <input type="hidden" id="editCategoria" value="${data.categoria || ''}">
     </div>
+
     <div class="field-group">
       <label>Importe mensual (€)</label>
       <input type="number" id="editImporte" step="0.01" inputmode="decimal" value="${data.importe}" />
     </div>
   `;
-} 
-    else if (type === 'gasto') {
+} else if (type === 'gasto') {
       titleEl.textContent = 'Editar gasto';
       html = `
         <div class="field-group">
@@ -1201,6 +1216,22 @@ function setupFijos() {
     saveBtn.dataset.editType = type;
     saveBtn.dataset.editId = data.id;
     overlay.classList.add('active');
+        // Activar chips de categoría en modal de gasto fijo
+    if (type === 'fijo') {
+      const chipsWrap = document.getElementById('editCategoriaChips');
+      const catHidden = document.getElementById('editCategoria');
+      if (chipsWrap && catHidden) {
+        chipsWrap.addEventListener('click', (ev) => {
+          const btn = ev.target.closest('.chip');
+          if (!btn) return;
+          const value = btn.dataset.cat || '';
+          catHidden.value = value;
+          chipsWrap.querySelectorAll('.chip').forEach(ch => {
+            ch.classList.toggle('chip-selected', ch === btn);
+          });
+        });
+      }
+    }
   }
 
   function closeEditModal() {
@@ -1243,14 +1274,17 @@ function setupFijos() {
   const fijo = state.fijos.find(f => String(f.id) === String(id));
   if (fijo && nombreEl && impEl && catEl) {
     fijo.nombre = nombreEl.value.trim();
-    fijo.categoria = catEl.value.trim() || fijo.categoria;
+    const nuevaCat = catEl.value.trim();
+    if (nuevaCat) {
+      fijo.categoria = nuevaCat;
+    }
     fijo.importe = Number(impEl.value) || 0;
     saveState();
     renderFijosTable();
     updateResumenYChips();
     showToast('Gasto fijo actualizado.');
   }
-} 
+}
        else if (type === 'gasto') {
           const fechaEl = document.getElementById('editFecha');
           const catEl = document.getElementById('editCategoria');
