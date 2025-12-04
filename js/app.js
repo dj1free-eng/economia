@@ -1,7 +1,7 @@
 
 (() => {
   'use strict';
-
+console.log(">>> app.js INICIADO <<<");
   // ----- Helpers -----
   const STORAGE_KEY = 'ecoApp_v11c_state';
 
