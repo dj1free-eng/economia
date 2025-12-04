@@ -65,8 +65,9 @@
     }
 
     const nextTab = order[idx];
-    if (nextTab && typeof window.activateTab === "function") {
-      window.activateTab(nextTab); // 👈 sin dirección extra
-    }
+if (nextTab && typeof window.activateTab === "function") {
+  const direction = dx < 0 ? "left" : "right";
+  window.activateTab(nextTab, direction);
+}
   }, { passive: true });
 })();
