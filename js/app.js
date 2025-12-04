@@ -40,7 +40,7 @@ log(">>> app.js INICIADO <<<");
     gastos: [],             // {id, fecha, categoria, desc, importe}
     notasPorMes: {}         // { 'YYYY-MM': 'texto' }
   };
-
+  window.__ecoState = state;
   const monthNames = [
     'Enero','Febrero','Marzo','Abril','Mayo','Junio',
     'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'
@@ -403,12 +403,11 @@ log(">>> app.js INICIADO <<<");
       cont.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🏠</div>No hay gastos fijos configurados.</div>';
       return;
     }
-
-   let html = '<table class="fixed-expense-table"><thead><tr><th>Gasto</th><th>Categoría</th><th>Importe mensual</th><th></th></tr></thead><tbody>';
+let html = '<table class="fixed-expense-table"><thead><tr><th>Gasto</th><th>Categoría</th><th>Importe mensual</th><th></th></tr></thead><tbody>';
 list.forEach(f => {
   html += `<tr data-id="${f.id}">
     <td>${f.nombre || ''}</td>
-    <td>${f.categoria || '-'}</td>
+    <td>${f.categoria || 'Varios'}</td>
     <td>${formatCurrency(f.importe)}</td>
     <td style="text-align:right;">
       <button class="btn btn-edit" data-action="edit" data-id="${f.id}">✏</button>
