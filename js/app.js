@@ -1302,7 +1302,7 @@ log(">>> app.js INICIADO <<<");
     setupHuchas();
     setupNotas();
     setupExportImportJson();
-    setupImportCsv();
+    //setupImportCsv();
     setupReset();
     setupEditModalEvents();
     setupConfirmModalEvents();
