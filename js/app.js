@@ -199,74 +199,27 @@ function activateTab(tab, animateDirection) {
   const sections = Array.from(document.querySelectorAll('.tab-section'));
   const btns = Array.from(document.querySelectorAll('.tab-btn'));
 
-  const current = document.querySelector('.tab-section.active');
-  const next = sections.find(sec => sec.dataset.tab === tab);
-  if (!next || next === current) return;
+  sections.forEach(sec => {
+    const isActive = sec.dataset.tab === tab;
+    sec.classList.toggle('active', isActive);
+  });
 
-  // Actualizar estado de los botones inferiores
   btns.forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tabTarget === tab);
   });
-
-  // Limpiar clases de animación antiguas
-  const animClasses = [
-    'slide-in-from-right',
-    'slide-out-to-left',
-    'slide-in-from-left',
-    'slide-out-to-right',
-    'off-left'
-  ];
-  sections.forEach(sec => sec.classList.remove(...animClasses));
-
-  // Si no hay dirección (click en botones) → cambio simple
-  if (!animateDirection || !current) {
-    if (current) current.classList.remove('active');
-    next.classList.add('active');
-    return;
-  }
-
-  if (animateDirection === 'left') {
-    // Swipe hacia la izquierda → vamos a la pestaña de la derecha
-    // Actual sale hacia la izquierda, nueva entra desde la derecha (estado por defecto: 100%)
-    current.classList.add('slide-out-to-left');
-
-    // Activamos la nueva
-    next.classList.add('active', 'slide-in-from-right');
-
-    // Al terminar la transición, limpiamos clases de animación
-    setTimeout(() => {
-      current.classList.remove('slide-out-to-left', 'active');
-      next.classList.remove('slide-in-from-right');
-      next.classList.add('active');
-    }, 260); // un pelín más que 0.25s
-  } else if (animateDirection === 'right') {
-    // Swipe hacia la derecha → vamos a la pestaña de la izquierda
-    // Actual sale hacia la derecha
-    current.classList.add('slide-out-to-right');
-
-    // Nueva empieza escondida a la izquierda
-    next.classList.add('off-left');
-    // Activamos y animamos desde la izquierda
-    next.classList.add('active', 'slide-in-from-left');
-
-    setTimeout(() => {
-      current.classList.remove('slide-out-to-right', 'active');
-      next.classList.remove('slide-in-from-left', 'off-left');
-      next.classList.add('active');
-    }, 260);
-  }
 }
 
 window.activateTab = activateTab;
-  function setupTabs() {
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const tab = btn.dataset.tabTarget;
-        if (!tab) return;
-        activateTab(tab);
-      });
+
+function setupTabs() {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tabTarget;
+      if (!tab) return;
+      activateTab(tab); // sin animación especial, solo cambio de pestaña
     });
-  }
+  });
+}
 
   // ----- Cálculos por mes -----
   function getIngresosBaseTotal() {
