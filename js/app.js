@@ -194,19 +194,58 @@ log(">>> app.js INICIADO <<<");
     });
   }
 
-  // ----- Tabs (botones inferiores) -----
-  function activateTab(tab, animateDirection) {
-    const sections = Array.from(document.querySelectorAll('.tab-section'));
-    const btns = Array.from(document.querySelectorAll('.tab-btn'));
-    sections.forEach(sec => {
-      const isActive = sec.dataset.tab === tab;
-      sec.classList.toggle('active', isActive);
-    });
-    btns.forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.tabTarget === tab);
-    });
+// ----- Tabs (botones inferiores) con animación -----
+function activateTab(tab, animateDirection) {
+  const sections = Array.from(document.querySelectorAll('.tab-section'));
+  const btns = Array.from(document.querySelectorAll('.tab-btn'));
+
+  const current = document.querySelector('.tab-section.active');
+  const next    = sections.find(sec => sec.dataset.tab === tab);
+
+  if (!next || next === current) return;
+
+  // Actualizar estado de los botones inferiores
+  btns.forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tabTarget === tab);
+  });
+
+  // Clases de animación que vamos a usar
+  const animClasses = [
+    'slide-in-left','slide-in-right',
+    'slide-out-left','slide-out-right'
+  ];
+  sections.forEach(sec => sec.classList.remove(...animClasses));
+
+  // Si no hay dirección (por ejemplo, clic en botón) → cambio simple
+  if (!animateDirection || !current) {
+    if (current) current.classList.remove('active');
+    next.classList.add('active');
+    return;
   }
-  window.activateTab = activateTab;
+
+  // Elegir animaciones según dirección del swipe
+  const outClass = animateDirection === 'left'  ? 'slide-out-left'  : 'slide-out-right';
+  const inClass  = animateDirection === 'left'  ? 'slide-in-right'  : 'slide-in-left';
+
+  // Animar la pestaña actual hacia fuera
+  current.classList.add(outClass);
+
+  current.addEventListener('animationend', function handleOut() {
+    current.classList.remove('active');
+    current.classList.remove(outClass);
+    current.removeEventListener('animationend', handleOut);
+  });
+
+  // Activar y animar la nueva pestaña hacia dentro
+  next.classList.add('active', inClass);
+
+  next.addEventListener('animationend', function handleIn() {
+    next.classList.remove(inClass);
+    next.removeEventListener('animationend', handleIn);
+  });
+}
+
+window.activateTab = activateTab;
 
   function setupTabs() {
     document.querySelectorAll('.tab-btn').forEach(btn => {
