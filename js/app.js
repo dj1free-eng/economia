@@ -404,17 +404,18 @@ log(">>> app.js INICIADO <<<");
       return;
     }
 
-    let html = '<table class="fixed-expense-table"><thead><tr><th>Gasto</th><th>Importe mensual</th><th></th></tr></thead><tbody>';
-    list.forEach(f => {
-      html += `<tr data-id="${f.id}">
-        <td>${f.nombre || ''}</td>
-        <td>${formatCurrency(f.importe)}</td>
-        <td style="text-align:right;">
-          <button class="btn btn-edit" data-action="edit" data-id="${f.id}">✏</button>
-          <button class="btn btn-danger-chip" data-action="del" data-id="${f.id}">🗑</button>
-        </td>
-      </tr>`;
-    });
+   let html = '<table class="fixed-expense-table"><thead><tr><th>Gasto</th><th>Categoría</th><th>Importe mensual</th><th></th></tr></thead><tbody>';
+list.forEach(f => {
+  html += `<tr data-id="${f.id}">
+    <td>${f.nombre || ''}</td>
+    <td>${f.categoria || '-'}</td>
+    <td>${formatCurrency(f.importe)}</td>
+    <td style="text-align:right;">
+      <button class="btn btn-edit" data-action="edit" data-id="${f.id}">✏</button>
+      <button class="btn btn-danger-chip" data-action="del" data-id="${f.id}">🗑</button>
+    </td>
+  </tr>`;
+});
     html += '</tbody></table>';
     cont.innerHTML = html;
 
