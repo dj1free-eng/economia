@@ -552,7 +552,34 @@
       </button>
     </div>
   </nav>
+<!-- Consola interna -->
+<div id="internalConsole" style="
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-height: 40vh;
+  background: rgba(0,0,0,0.85);
+  color: #00ff99;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 10px;
+  overflow-y: auto;
+  display: none;
+  z-index: 999999;
+  border-top: 2px solid #00ff99;
+"></div>
 
+<!-- Botón oculto para abrir/cerrar -->
+<div id="consoleToggle" style="
+  position: fixed;
+  bottom: 60px;
+  right: 10px;
+  width: 20px;
+  height: 20px;
+  opacity: 0.15;
+  z-index: 999999;
+"></div>
   <script src="js/app.js"></script>
   <script src="js/swipe.js"></script>
 </body>
